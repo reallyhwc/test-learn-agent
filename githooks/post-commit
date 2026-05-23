@@ -1,0 +1,39 @@
+#!/bin/bash
+# post-commit — auto-push when 5 local commits accumulate
+# Installed via: git config core.hooksPath githooks
+
+# Check if remote is configured
+REMOTE=$(git remote -v 2>/dev/null | head -1 | awk '{print $1}')
+if [ -z "$REMOTE" ]; then
+    exit 0  # No remote, skip
+fi
+
+BRANCH=$(git branch --show-current)
+if [ -z "$BRANCH" ] || [ "$BRANCH" = "HEAD" ]; then
+    exit 0  # Detached HEAD, skip
+fi
+
+# Check if upstream is set
+UPSTREAM=$(git rev-parse --abbrev-ref "$BRANCH"@{upstream} 2>/dev/null)
+if [ -z "$UPSTREAM" ]; then
+    # Count TOTAL local commits without upstream
+    # Check if branch exists on remote
+    if git ls-remote --heads "$REMOTE" "$BRANCH" 2>/dev/null | grep -q "$BRANCH"; then
+        UNPUSHED=$(git rev-list --count "$REMOTE/$BRANCH".."$BRANCH" 2>/dev/null || echo "0")
+    else
+        # New branch, count all commits
+        UNPUSHED=$(git rev-list --count HEAD 2>/dev/null || echo "0")
+    fi
+else
+    UNPUSHED=$(git rev-list --count "$UPSTREAM"..HEAD 2>/dev/null || echo "0")
+fi
+
+if [ "$UNPUSHED" -ge 5 ]; then
+    echo ""
+    echo ">>> Unpushed commits reached ${UNPUSHED} (threshold: 5)"
+    echo ">>> Pushing to ${REMOTE}/${BRANCH}..."
+    git push "$REMOTE" "$BRANCH"
+    echo ""
+fi
+
+exit 0

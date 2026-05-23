@@ -1,0 +1,41 @@
+#!/bin/bash
+# commit-msg — validate Conventional Commits format
+# Installed via: git config core.hooksPath githooks
+
+COMMIT_MSG_FILE="$1"
+
+# Read the first line (skip comments)
+FIRST_LINE=$(grep -v '^#' "$COMMIT_MSG_FILE" | head -1)
+
+# Pattern: type(optional-scope): description
+# Types: feat fix refactor docs style test chore perf ci build revert
+PATTERN='^(feat|fix|refactor|docs|style|test|chore|perf|ci|build|revert)(\([a-zA-Z0-9._-]+\))?: .+'
+
+if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
+    echo ""
+    echo "=================================================="
+    echo "  Commit message does NOT follow Conventional Commits"
+    echo "=================================================="
+    echo ""
+    echo "  Format: <type>: <description>"
+    echo "         or <type>(<scope>): <description>"
+    echo ""
+    echo "  Types: feat, fix, refactor, docs, style, test,"
+    echo "         chore, perf, ci, build, revert"
+    echo ""
+    echo "  Examples:"
+    echo "    feat: add multi-user support"
+    echo "    fix: correct URI encoding for Chinese chars"
+    echo "    refactor(frontend): replace hardcoded URLs with Vite proxy"
+    echo "    docs: add Mermaid architecture diagrams"
+    echo "    chore: update gitignore"
+    echo ""
+    echo "  Your message: $FIRST_LINE"
+    echo ""
+    echo "  To edit: git commit --edit"
+    echo "  To abort: git commit --abort"
+    echo "=================================================="
+    exit 1
+fi
+
+exit 0

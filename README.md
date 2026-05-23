@@ -6,240 +6,205 @@
 [![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D)](https://vuejs.org/)
 [![Element Plus](https://img.shields.io/badge/Element_Plus-2.14-blue)](https://element-plus.org/)
 
-A learning project for AI Agent & MCP protocol in the Java ecosystem — personal finance bookkeeping with AI-powered natural language queries.
+A learning demo for **AI Agent** and **MCP (Model Context Protocol)** in the Java ecosystem — personal finance bookkeeping you can talk to.
 
 [中文](README_CN.md) | English
 
 ---
 
-## Overview
+## What is this?
 
-A learning project to explore **AI Agent** and **MCP (Model Context Protocol)** in the Java ecosystem. Built with Spring Boot + Spring AI + Vue 3 + Element Plus.
+A 4-service project that explores how to build AI-powered applications on the JVM. You record daily expenses and income, then query them through natural language conversation. The AI understands your intent, calls the right APIs via MCP tools, and returns formatted results — with streaming output and conversation memory.
 
-**Why this project exists:** As AI tools become mainstream, understanding how to build AI-powered applications in the Java ecosystem is essential. This project demonstrates the full MCP protocol chain — from frontend to LLM to tool execution — without cutting corners.
+**What you can learn from this codebase:**
+- How MCP protocol bridges LLMs and business APIs
+- How Spring AI integrates with OpenAI-compatible models
+- How to implement SSE streaming from LLM to browser, token by token
+- How to structure a multi-service Java project with clean boundaries
 
-**Key features:**
-- AI Agent with natural language bookkeeping queries
-- Full MCP protocol chain (Agent → MCP Client → MCP Server → Backend)
-- Streaming AI output (SSE, character-by-character)
-- Multi-user support with AI memory system
-- ECharts-powered data visualization
-- Zero external dependencies (CSV storage)
+---
 
-### Architecture
+## Architecture
 
-```
-Browser (:5173) → Frontend (Vue 3 + Element Plus)
-                      ├── REST API → Backend (:8080) [Spring Boot, CSV]
-                      └── REST/SSE → Agent (:8081) [Spring AI + DeepSeek]
-                                        │ MCP/SSE
-                                        ▼
-                                    MCP Server (:8082) [Spring AI MCP]
-                                        │ REST
-                                        ▼
-                                    Backend (:8080)
-```
+```mermaid
+graph LR
+    Browser["Browser<br/>:5173"]
+    Frontend["Frontend<br/>Vue 3 + Element Plus"]
+    Agent["Agent :8081<br/>Spring AI<br/>MCP Client<br/>ChatMemory"]
+    MCPServer["MCP Server :8082<br/>4 Tools"]
+    Backend["Backend :8080<br/>Spring Boot<br/>CSV"]
 
-### Design Rationale
-
-**Why 4 separate services?**
-
-As a learning project, preserving the complete MCP protocol chain is the core goal:
-
-1. **Backend (8080)**: Pure REST API, AI/MCP agnostic, can be used independently
-2. **MCP Server (8082)**: Wraps Backend APIs as MCP Tools, exposing standard MCP protocol
-3. **Agent (8081)**: MCP Client, dynamically discovers Tools, combines with LLM for intelligent chat
-4. **Frontend (5173)**: Independent Vue SPA, replaceable with any frontend framework
-
-This architecture demonstrates the value of MCP — **the middle layer decouples AI from business logic**:
-- Backend doesn't need to know about AI
-- Agent doesn't need to know about Backend implementation
-- MCP Server can evolve independently, adding more Tools
-- Any MCP Client (Claude Desktop, other Agents) can connect directly
-
-**Why CSV instead of a database?**
-
-Zero external dependencies. Clone and run — no MySQL/PostgreSQL needed. CSV files are human-readable for easy debugging.
-
-### Features
-
-**Bookkeeping (Backend + Frontend)**
-- Account management with balance tracking
-- Transaction recording with categories and notes
-- Filtering by date, category, type
-- Server-side pagination
-- CSV persistence with automatic migration
-
-**AI Chat (Agent + MCP Server)**
-- Natural language balance queries: *"What's my account balance?"*
-- Natural language transaction queries: *"Show my dining expenses"*
-- Natural language bookkeeping: *"Record lunch ¥50"*
-- SSE streaming output with real-time rendering
-- AI memory system with per-user conversation history
-- Markdown rendering (tables, bold, lists)
-- Multi-user support with data isolation
-
-**Data Visualization**
-- Daily income/expense trend line chart
-- Expense category breakdown pie chart
-
-### Tech Stack
-
-| Module | Technology | Description |
-|--------|-----------|-------------|
-| Backend | Spring Boot 3.4.5 + Java 17 | REST API, Jackson CsvMapper |
-| MCP Server | Spring AI 1.1.0 + MCP Server WebMVC | SSE transport, 4 MCP Tools |
-| Agent | Spring AI 1.1.0 + DeepSeek | MCP Client, ChatClient, ChatMemory |
-| Frontend | Vue 3 + Vite + Element Plus | Composition API, SSE Streaming, ECharts |
-| Storage | CSV files | Zero external dependencies |
-| LLM | DeepSeek V3 (deepseek-chat) | OpenAI-compatible API |
-| MCP | 2024-11-05 Protocol | SYNC + SSE Transport |
-
-### Project Structure
-
-```
-personal-finance-agent/
-├── finance-backend/              # Bookkeeping backend (Spring Boot)
-│   ├── src/main/java/com/example/finance/
-│   │   ├── controller/           # AccountController, TransactionController, CategoryController
-│   │   ├── service/              # FinanceService
-│   │   ├── repository/           # CsvDataStore (CSV read/write)
-│   │   ├── model/                # Account, Transaction, Category, Enums
-│   │   ├── dto/                  # PageResult
-│   │   └── config/               # CORS configuration
-│   └── pom.xml
-├── finance-mcp-server/           # MCP Server (Spring AI)
-│   ├── src/main/java/com/example/mcp/
-│   │   ├── tool/                 # FinanceTools (@McpTool)
-│   │   ├── dto/                  # DTOs for REST responses
-│   │   └── config/               # RestClient configuration
-│   └── pom.xml
-├── finance-agent/                # Agent Service (Spring AI + MCP Client)
-│   ├── src/main/java/com/example/agent/
-│   │   ├── controller/           # ChatController (including /chat/stream)
-│   │   ├── config/               # CORS, ChatMemoryConfig
-│   │   ├── memory/               # JsonFileChatMemory, ChatHistoryItem
-│   │   └── dto/                  # ChatRequest/Response
-│   └── pom.xml
-├── finance-frontend/             # Vue 3 Frontend
-│   ├── src/
-│   │   ├── App.vue               # Main layout (Element Plus Container)
-│   │   ├── stores/               # userStore.js (multi-user state)
-│   │   └── components/           # AppHeader, AccountList, TransactionForm,
-│   │                               TransactionList, ChartPanel, ChatPanel, ChatMessage
-│   └── package.json
-├── .env.example                  # API Key configuration template
-├── start-all.sh                  # One-click startup script
-├── README.md                     # English
-└── README_CN.md                  # Chinese
+    Browser --> Frontend
+    Frontend -->|"REST"| Backend
+    Frontend -->|"REST / SSE"| Agent
+    Agent -->|"MCP over SSE"| MCPServer
+    MCPServer -->|"REST"| Backend
 ```
 
-### Quick Start
+**4 services, 1 protocol chain.** The frontend talks to both the Backend (for CRUD) and the Agent (for AI chat). When the Agent needs data, it doesn't call the Backend directly — it goes through the MCP Server, which exposes Backend APIs as standardized MCP tools.
 
-#### Prerequisites
+---
 
-- **Java 17+** (Recommended: `brew install openjdk@17`)
-- **Node.js 18+**
-- **DeepSeek API Key** ([Get one free](https://platform.deepseek.com/api_keys))
+## AI Chat Flow
 
-> **NOT required**: Maven (Maven Wrapper included), database, Docker
+Here's what happens when a user asks *"How much did I spend on dining this month?"*
 
-#### 1. Clone
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant F as Frontend
+    participant A as Agent
+    participant L as LLM
+    participant M as MCP Server
+    participant B as Backend
+
+    U->>F: "这个月餐饮花了多少？"
+    F->>A: POST /api/chat/stream
+    A->>L: System prompt + user message
+    L-->>A: Function call<br/>list_transactions(category="餐饮")
+    A->>M: Invoke tool
+    M->>B: GET /api/transactions?category=餐饮
+    B-->>M: PageResult<Transaction>
+    M-->>A: Transaction[]
+    A->>L: Tool results
+    L-->>A: "本月餐饮支出共 ¥1,644 元..."
+    A-->>F: SSE data: token token token...
+    F-->>U: Rendered markdown
+```
+
+The key insight: **the LLM decides which tool to call.** We don't hardcode any intent matching. The system prompt tells the LLM what tools are available, and it autonomously invokes them — this is the core of the Agent pattern.
+
+---
+
+## Why 4 Separate Services?
+
+You could put all Java code in a single Spring Boot app. This project deliberately splits them:
+
+```mermaid
+graph TB
+    subgraph "Could be one process"
+        direction LR
+        A[Backend] --- M[MCP Server] --- G[Agent]
+    end
+    subgraph "Actually deployed"
+        direction TB
+        A2[Backend :8080]
+        M2[MCP Server :8082]
+        G2[Agent :8081]
+        A2 ~~~ M2 ~~~ G2
+    end
+```
+
+**The split isn't about production best practice — it's about learning.**
+
+| Service | Role | Knows about AI? | Knows about business? |
+|---------|------|:---:|:---:|
+| Backend | Pure REST API + CSV storage | No | Yes |
+| MCP Server | Wraps REST as MCP tools | No | No (just passes through) |
+| Agent | MCP Client + LLM orchestration | Yes | No |
+| Frontend | UI, calls both Backend and Agent | No | No |
+
+This separation makes the MCP layer **visible and tangible**. In a real system you might merge the MCP Server with the Backend, but here you can see exactly where the protocol boundary sits.
+
+---
+
+## Design Decisions
+
+**CSV instead of a database** — Zero setup. Clone, configure your LLM key, run. No MySQL, no Docker. CSV files are human-readable for debugging.
+
+**`.env` for configuration** — One file for LLM credentials. Spring Boot loads it natively via a custom `PropertySourceLoader` that teaches it the `.env` extension. No environment variables needed.
+
+**SSE over WebSocket** — The Agent streams tokens to the browser via Server-Sent Events. It's unidirectional (server → client), which is exactly what streaming LLM output needs. Simpler than WebSocket, works through HTTP proxies.
+
+**Multi-user via `userId` param** — A pseudo-login with a `<select>` dropdown. No real auth — but every API call and MCP tool invocation carries a `userId`, teaching the pattern of multi-tenant data isolation without the ceremony of OAuth.
+
+---
+
+## Quick Start
+
+**Prerequisites:** Java 17+, Node.js 18+
 
 ```bash
+# 1. Clone
 git clone https://github.com/your-username/personal-finance-agent.git
 cd personal-finance-agent
-```
 
-#### 2. Configure API Key
-
-```bash
+# 2. Configure LLM
 cp .env.example .env
-# Edit .env with your DeepSeek API key
-# DEEPSEEK_API_KEY=sk-your-real-key-here
-```
+# Edit .env → paste your API key
 
-#### 3. Install Frontend Dependencies
+# 2b. Activate git hooks (commit lint + auto-push)
+git config core.hooksPath githooks
 
-```bash
+# 3. Install frontend deps
 cd finance-frontend && npm install && cd ..
-```
 
-#### 4. Start All Services
-
-```bash
-export DEEPSEEK_API_KEY=sk-your-key-here
+# 4. Start all services
 ./start-all.sh
+
+# 5. Open http://localhost:5173
 ```
 
-#### 5. Open Browser
+> **Tip:** If Maven complains about compilation, ensure `JAVA_HOME` points to JDK 17. The wrapper defaults to your system Java — which might be 8.
 
-Visit **http://localhost:5173** and start using!
-
-#### Manual Start (4 terminals)
+**Manual start (4 terminals, for debugging):**
 
 ```bash
-# Terminal 1: Backend (:8080)
+# T1: Backend
 cd finance-backend && ./mvnw spring-boot:run
 
-# Terminal 2: MCP Server (:8082)
+# T2: MCP Server
 cd finance-mcp-server && ./mvnw spring-boot:run
 
-# Terminal 3: Agent (:8081)
-export DEEPSEEK_API_KEY=sk-your-key-here
+# T3: Agent
 cd finance-agent && ./mvnw spring-boot:run
 
-# Terminal 4: Frontend (:5173)
+# T4: Frontend
 cd finance-frontend && npm run dev
 ```
 
-### API Reference
+---
 
-#### Backend (:8080)
-
-| Method | Path | Description | Parameters |
-|--------|------|-------------|------------|
-| GET | `/api/accounts` | List accounts | `userId` |
-| POST | `/api/accounts` | Create account | `{"name":"...","type":"CASH\|BANK\|CARD","userId":"..."}` |
-| GET | `/api/accounts/{id}/balance` | Get balance | - |
-| GET | `/api/transactions` | List transactions (paginated) | `userId, page, pageSize, date, category, type, accountId` |
-| POST | `/api/transactions` | Add transaction | `{"userId":"...","accountId":1,"type":"EXPENSE","amount":50,"category":"Food","note":"Lunch","date":"2026-05-23"}` |
-| GET | `/api/categories` | List categories | - |
-
-#### Agent (:8081)
-
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/chat` | AI Chat `{"message": "What's my balance?", "userId": "zhangsan"}` → `{"reply": "..."}` |
-| POST | `/api/chat/stream` | AI Streaming Chat (SSE, character-by-character) |
-
-#### MCP Server Tools (:8082)
-
-| Tool | Description | Parameters |
-|------|-------------|------------|
-| `query_balance` | Query account balance | `userId, accountId` |
-| `list_transactions` | List transaction records | `userId, date?, category?, type?, accountId?` |
-| `add_transaction` | Add a transaction | `userId, accountId, type, amount, category, note?` |
-| `list_accounts` | List all accounts | `userId` |
-
-### AI Chat Examples
+## Project Map
 
 ```
-You: What's my account balance?
-AI: Your default cash account balance is ¥20,273.96.
-
-You: Add an expense: lunch 50 yuan
-AI: Recorded: EXPENSE ¥50.00, category: 餐饮, note: 午餐.
-
-You: Show me all my accounts
-AI: You have 1 account: 默认现金账户 (CASH), balance ¥20,273.96.
+.
+├── finance-backend/         Spring Boot · REST API · CSV via Jackson CsvMapper
+│   └── src/.../controller, service, repository, model
+├── finance-mcp-server/      Spring AI MCP · @McpTool annotations · SSE transport
+│   └── src/.../tool/FinanceTools.java  ← 4 tools, 1 file
+├── finance-agent/           Spring AI ChatClient · MCP Client · ChatMemory
+│   └── src/.../controller/ChatController.java  ← /chat, /chat/stream
+├── finance-frontend/        Vue 3 · Element Plus · ECharts · SSE streaming
+│   └── src/components/      ← 7 components, 1 store
+├── .env.example             LLM config template → cp to .env
+└── start-all.sh             One-click startup
 ```
 
-### MCP Integration
+Each module is self-contained with its own `pom.xml` (Java) or `package.json` (frontend). No shared code between them — they communicate only over HTTP.
 
-The MCP Server exposes standard MCP protocol. Any MCP client can connect.
+---
 
-**Claude Desktop Configuration:**
+## AI Chat Examples
+
+```
+You: 我的账户余额是多少？
+AI: 您的默认现金账户当前余额为 ¥20,273.96 元。
+
+You: 这个月餐饮花了多少钱？
+AI: 本月餐饮支出共 ¥1,644 元，共 26 笔。
+
+You: 帮我记一笔：午餐 50 元
+AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
+```
+
+All queries go through the MCP tool chain. The AI never fabricates data — the system prompt instructs it to call tools for every financial question.
+
+---
+
+## Using with Claude Desktop
+
+Since the MCP Server speaks standard MCP protocol:
 
 ```json
 {
@@ -251,10 +216,15 @@ The MCP Server exposes standard MCP protocol. Any MCP client can connect.
 }
 ```
 
-### FAQ
+Add this to `claude_desktop_config.json` and Claude can directly query your bookkeeping data.
 
-**Q: "Port XXXX was already in use"**
+---
 
+## FAQ
+
+**Can I use a different LLM?** Yes. Edit `.env` — any OpenAI-compatible API works (OpenAI, Qwen, Groq, Moonshot, SiliconFlow, etc.).
+
+**Port already in use?**
 ```bash
 lsof -ti:8080 | xargs kill -9  # Backend
 lsof -ti:8081 | xargs kill -9  # Agent
@@ -262,22 +232,8 @@ lsof -ti:8082 | xargs kill -9  # MCP Server
 lsof -ti:5173 | xargs kill -9  # Frontend
 ```
 
-**Q: How to reset data?**
+**Reset all data?** `rm -rf finance-backend/data`
 
-```bash
-rm -rf finance-backend/data
-```
-
-**Q: Can I use a different LLM?**
-
-Yes. Modify `finance-agent/src/main/resources/application.yml` with any OpenAI-compatible API (OpenAI, DeepSeek, Qwen, etc.).
-
-### License
+## License
 
 MIT © 2026
-
----
-
-<p align="center">
-  <sub>Built with Spring AI + DeepSeek + Vue 3 + Element Plus · MCP Protocol 2024-11-05</sub>
-</p>

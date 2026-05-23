@@ -83,23 +83,15 @@ Supported providers: DeepSeek, OpenAI, 通义千问, Groq, Moonshot, SiliconFlow
 
 ## Git Rules
 
-**Commit discipline:**
-- Commit after every meaningful change — one logical change per commit, no batching
-- Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/):
-  - `feat:` — new feature
-  - `fix:` — bug fix
-  - `refactor:` — code restructure, no behavior change
-  - `docs:` — documentation only
-  - `style:` — formatting, whitespace
-  - `test:` — add or update tests
-  - `chore:` — build, config, tools
-- Messages in English, lowercase imperative: `feat: add multi-user support`
-- Commit immediately after completing a task — don't let changes pile up
+**Enforced by git hooks** in `githooks/` (activated via `git config core.hooksPath githooks`):
 
-**Push discipline:**
-- When a remote (`origin`) is configured, track local unpushed commits
-- If unpushed commits reach 5, push to origin immediately: `git push origin <current-branch>`
-- Push before the 5-commit threshold if work is done for the day
+- `commit-msg` hook — blocks commits that don't follow [Conventional Commits](https://www.conventionalcommits.org/). Valid types: `feat, fix, refactor, docs, style, test, chore, perf, ci, build, revert`. Format: `type: description` or `type(scope): description`.
+- `post-commit` hook — auto-pushes to `origin` when local unpushed commits reach 5.
+
+**You MUST:**
+- Commit after every meaningful change — one logical change per commit, no batching
+- Use English, lowercase imperative commit messages: `feat: add multi-user support`
+- Make sure hooks are active: `git config core.hooksPath githooks` (one-time setup)
 
 **Gitignore:**
 - `.env` is gitignored
