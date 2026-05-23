@@ -1,39 +1,39 @@
 #!/bin/bash
-# commit-msg — validate Conventional Commits format
-# Installed via: git config core.hooksPath githooks
+# commit-msg — 校验 Conventional Commits 格式 + 中文描述
+# 激活方式: git config core.hooksPath githooks
 
 COMMIT_MSG_FILE="$1"
 
-# Read the first line (skip comments)
+# 读取提交信息第一行（跳过注释）
 FIRST_LINE=$(grep -v '^#' "$COMMIT_MSG_FILE" | head -1)
 
-# Pattern: type(optional-scope): description
-# Types: feat fix refactor docs style test chore perf ci build revert
+# 格式: type(可选scope): 中文描述
+# type: feat fix refactor docs style test chore perf ci build revert
 PATTERN='^(feat|fix|refactor|docs|style|test|chore|perf|ci|build|revert)(\([a-zA-Z0-9._-]+\))?: .+'
 
 if ! echo "$FIRST_LINE" | grep -qE "$PATTERN"; then
     echo ""
     echo "=================================================="
-    echo "  Commit message does NOT follow Conventional Commits"
+    echo "  提交信息不符合 Conventional Commits 规范"
     echo "=================================================="
     echo ""
-    echo "  Format: <type>: <description>"
-    echo "         or <type>(<scope>): <description>"
+    echo "  格式: <type>: <中文描述>"
+    echo "       或 <type>(<scope>): <中文描述>"
     echo ""
-    echo "  Types: feat, fix, refactor, docs, style, test,"
-    echo "         chore, perf, ci, build, revert"
+    echo "  type 类型: feat, fix, refactor, docs, style,"
+    echo "             test, chore, perf, ci, build, revert"
     echo ""
-    echo "  Examples:"
-    echo "    feat: add multi-user support"
-    echo "    fix: correct URI encoding for Chinese chars"
-    echo "    refactor(frontend): replace hardcoded URLs with Vite proxy"
-    echo "    docs: add Mermaid architecture diagrams"
-    echo "    chore: update gitignore"
+    echo "  示例:"
+    echo "    feat: 添加多用户支持"
+    echo "    fix: 修复中文 URI 双重编码问题"
+    echo "    refactor(frontend): 用 Vite proxy 替换硬编码地址"
+    echo "    docs: 添加 Mermaid 架构图"
+    echo "    chore: 更新 gitignore"
     echo ""
-    echo "  Your message: $FIRST_LINE"
+    echo "  你的提交信息: $FIRST_LINE"
     echo ""
-    echo "  To edit: git commit --edit"
-    echo "  To abort: git commit --abort"
+    echo "  编辑: git commit --edit"
+    echo "  放弃: git commit --abort"
     echo "=================================================="
     exit 1
 fi

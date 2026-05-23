@@ -2,6 +2,10 @@
 
 A 4-service demo project showcasing AI Agent + MCP (Model Context Protocol) on the Java/Spring ecosystem.
 
+## Language
+
+**所有内容使用中文** — 代码注释、提交信息、文档、与用户的所有交互均使用中文。技术术语（如类名、方法名、注解名）保持英文。
+
 ## Architecture
 
 ```
@@ -90,7 +94,7 @@ Supported providers: DeepSeek, OpenAI, 通义千问, Groq, Moonshot, SiliconFlow
 
 **You MUST:**
 - Commit after every meaningful change — one logical change per commit, no batching
-- Use English, lowercase imperative commit messages: `feat: add multi-user support`
+- 提交信息描述部分使用中文: `feat: 添加多用户支持`，`fix: 修复中文 URI 编码问题`
 - Make sure hooks are active: `git config core.hooksPath githooks` (one-time setup)
 
 **Gitignore:**
