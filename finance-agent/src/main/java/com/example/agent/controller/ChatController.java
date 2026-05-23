@@ -5,6 +5,8 @@ import com.example.agent.dto.ChatResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
+import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.tool.ToolCallbackProvider;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,13 +21,17 @@ public class ChatController {
 
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
     private final ChatClient chatClient;
+    private final ChatMemory chatMemory;
 
-    public ChatController(ChatClient.Builder chatClientBuilder, List<ToolCallbackProvider> toolProviders) {
+    public ChatController(ChatClient.Builder chatClientBuilder,
+                          List<ToolCallbackProvider> toolProviders,
+                          ChatMemory chatMemory) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
                     provider.getToolCallbacks().length);
         }
+        this.chatMemory = chatMemory;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -38,9 +44,14 @@ public class ChatController {
         String userId = request.getUserId() != null ? request.getUserId() : "default";
         String systemPrompt = buildSystemPrompt(userId);
 
+        var advisor = MessageChatMemoryAdvisor.builder(chatMemory)
+                .conversationId(userId)
+                .build();
+
         String reply = chatClient.prompt()
                 .system(systemPrompt)
                 .user(request.getMessage())
+                .advisors(advisor)
                 .call()
                 .content();
 
