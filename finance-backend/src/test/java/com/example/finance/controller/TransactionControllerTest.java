@@ -21,7 +21,7 @@ class TransactionControllerTest {
     void shouldListTransactions() throws Exception {
         mockMvc.perform(get("/api/transactions"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.items").isArray());
     }
 
     @Test
@@ -40,6 +40,6 @@ class TransactionControllerTest {
     void shouldFilterTransactionsByDate() throws Exception {
         mockMvc.perform(get("/api/transactions?date=2026-05-23"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$").isArray());
+                .andExpect(jsonPath("$.items").isArray());
     }
 }
