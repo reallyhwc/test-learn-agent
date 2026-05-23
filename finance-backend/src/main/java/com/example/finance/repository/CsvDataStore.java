@@ -1,5 +1,6 @@
 package com.example.finance.repository;
 
+import com.example.finance.dto.PageResult;
 import com.example.finance.model.*;
 import com.fasterxml.jackson.databind.MappingIterator;
 import com.fasterxml.jackson.databind.SerializationFeature;
@@ -134,6 +135,25 @@ public class CsvDataStore {
                 .filter(t -> type == null || t.getType() == type)
                 .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
                 .collect(Collectors.toList());
+    }
+
+    public PageResult<Transaction> findTransactionsPaginated(Long accountId, LocalDate date,
+            String category, TransactionType type, String userId, int page, int pageSize) {
+        List<Transaction> filtered = transactions.stream()
+                .filter(t -> accountId == null || t.getAccountId().equals(accountId))
+                .filter(t -> date == null || t.getDate().equals(date))
+                .filter(t -> category == null || category.equals(t.getCategory()))
+                .filter(t -> type == null || t.getType() == type)
+                .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
+                .collect(Collectors.toList());
+
+        long total = filtered.size();
+        int fromIndex = (page - 1) * pageSize;
+        if (fromIndex >= total) return new PageResult<>(List.of(), page, pageSize, total);
+
+        int toIndex = Math.min(fromIndex + pageSize, (int) total);
+        List<Transaction> pageItems = filtered.subList(fromIndex, toIndex);
+        return new PageResult<>(pageItems, page, pageSize, total);
     }
 
     public void saveTransaction(Transaction transaction) {

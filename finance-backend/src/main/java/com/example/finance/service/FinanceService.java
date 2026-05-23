@@ -1,5 +1,6 @@
 package com.example.finance.service;
 
+import com.example.finance.dto.PageResult;
 import com.example.finance.model.*;
 import com.example.finance.repository.CsvDataStore;
 import org.springframework.stereotype.Service;
@@ -44,6 +45,15 @@ public class FinanceService {
             tt = TransactionType.valueOf(type.toUpperCase());
         }
         return dataStore.findTransactions(accountId, date, category, tt, userId);
+    }
+
+    public PageResult<Transaction> listTransactionsPaginated(String userId, Long accountId,
+            LocalDate date, String category, String type, int page, int pageSize) {
+        TransactionType tt = null;
+        if (type != null && !type.isBlank()) {
+            tt = TransactionType.valueOf(type.toUpperCase());
+        }
+        return dataStore.findTransactionsPaginated(accountId, date, category, tt, userId, page, pageSize);
     }
 
     public Transaction createTransaction(Transaction transaction) {

@@ -1,5 +1,6 @@
 package com.example.finance.controller;
 
+import com.example.finance.dto.PageResult;
 import com.example.finance.model.Transaction;
 import com.example.finance.service.FinanceService;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -19,13 +20,15 @@ public class TransactionController {
     }
 
     @GetMapping
-    public List<Transaction> listTransactions(
+    public PageResult<Transaction> listTransactions(
             @RequestParam(required = false, defaultValue = "default") String userId,
             @RequestParam(required = false) Long accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) String category,
-            @RequestParam(required = false) String type) {
-        return financeService.listTransactions(userId, accountId, date, category, type);
+            @RequestParam(required = false) String type,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "20") int pageSize) {
+        return financeService.listTransactionsPaginated(userId, accountId, date, category, type, page, pageSize);
     }
 
     @PostMapping

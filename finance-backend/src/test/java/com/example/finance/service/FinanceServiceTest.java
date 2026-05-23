@@ -18,19 +18,20 @@ class FinanceServiceTest {
 
     @Test
     void shouldCreateAccountAndListIt() {
-        Account account = new Account(null, "测试账户", AccountType.BANK, BigDecimal.ZERO);
+        Account account = new Account(null, "测试账户", AccountType.BANK, BigDecimal.ZERO, "testuser");
         Account created = financeService.createAccount(account);
         assertThat(created.getId()).isNotNull();
         assertThat(created.getName()).isEqualTo("测试账户");
-        assertThat(financeService.listAccounts()).isNotEmpty();
+        assertThat(created.getUserId()).isEqualTo("testuser");
+        assertThat(financeService.listAccounts("testuser")).isNotEmpty();
     }
 
     @Test
     void shouldCreateTransactionAndUpdateBalance() {
         Account account = financeService.createAccount(
-                new Account(null, "转账测试", AccountType.CASH, new BigDecimal("1000.00")));
+                new Account(null, "转账测试", AccountType.CASH, new BigDecimal("1000.00"), "testuser"));
         Transaction tx = new Transaction(null, account.getId(), TransactionType.EXPENSE,
-                new BigDecimal("200.00"), "餐饮", "午餐", LocalDate.now());
+                new BigDecimal("200.00"), "餐饮", "午餐", LocalDate.now(), "testuser");
         financeService.createTransaction(tx);
         BigDecimal balance = financeService.getBalance(account.getId()).orElseThrow();
         assertThat(balance).isEqualByComparingTo(new BigDecimal("800.00"));
