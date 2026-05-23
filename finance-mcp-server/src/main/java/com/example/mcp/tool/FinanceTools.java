@@ -4,8 +4,8 @@ import com.example.mcp.dto.AccountResponse;
 import com.example.mcp.dto.TransactionResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.tool.annotation.Tool;
-import org.springframework.ai.tool.annotation.ToolParam;
+import org.springaicommunity.mcp.annotation.McpTool;
+import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
@@ -23,8 +23,8 @@ public class FinanceTools {
         this.restClient = restClient;
     }
 
-    @Tool(description = "查询指定账户的余额")
-    public BigDecimal queryBalance(@ToolParam(description = "账户ID") Long accountId) {
+    @McpTool(name = "query_balance", description = "查询指定账户的余额")
+    public BigDecimal queryBalance(@McpToolParam(description = "账户ID") Long accountId) {
         log.info("queryBalance called with accountId={}", accountId);
         return restClient.get()
                 .uri("/api/accounts/{id}/balance", accountId)
@@ -32,12 +32,12 @@ public class FinanceTools {
                 .body(BigDecimal.class);
     }
 
-    @Tool(description = "查询交易记录列表，可按日期、分类、类型和账户过滤")
+    @McpTool(name = "list_transactions", description = "查询交易记录列表，可按日期、分类、类型和账户过滤")
     public List<TransactionResponse> listTransactions(
-            @ToolParam(description = "交易日期 (yyyy-MM-dd)", required = false) String date,
-            @ToolParam(description = "交易分类，如餐饮、交通、购物等", required = false) String category,
-            @ToolParam(description = "交易类型: INCOME 或 EXPENSE", required = false) String type,
-            @ToolParam(description = "账户ID", required = false) Long accountId) {
+            @McpToolParam(description = "交易日期 (yyyy-MM-dd)") String date,
+            @McpToolParam(description = "交易分类，如餐饮、交通、购物等") String category,
+            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
+            @McpToolParam(description = "账户ID") Long accountId) {
         log.info("listTransactions called with date={}, category={}, type={}, accountId={}",
                 date, category, type, accountId);
 
@@ -53,13 +53,13 @@ public class FinanceTools {
                 .body(TransactionResponse[].class));
     }
 
-    @Tool(description = "添加一笔交易记录")
+    @McpTool(name = "add_transaction", description = "添加一笔交易记录")
     public Map<String, Object> addTransaction(
-            @ToolParam(description = "账户ID") Long accountId,
-            @ToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
-            @ToolParam(description = "金额") BigDecimal amount,
-            @ToolParam(description = "分类") String category,
-            @ToolParam(description = "备注", required = false) String note) {
+            @McpToolParam(description = "账户ID") Long accountId,
+            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
+            @McpToolParam(description = "金额") BigDecimal amount,
+            @McpToolParam(description = "分类") String category,
+            @McpToolParam(description = "备注") String note) {
         log.info("addTransaction called with accountId={}, type={}, amount={}, category={}",
                 accountId, type, amount, category);
 
@@ -78,7 +78,7 @@ public class FinanceTools {
                 .body(Map.class);
     }
 
-    @Tool(description = "查询所有账户列表")
+    @McpTool(name = "list_accounts", description = "查询所有账户列表")
     public List<AccountResponse> listAccounts() {
         log.info("listAccounts called");
         return List.of(restClient.get()

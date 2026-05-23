@@ -5,13 +5,14 @@ spring:
   ai:
     openai:
       api-key: ${DEEPSEEK_API_KEY:your-api-key-here}
-      base-url: https://api.deepseek.com/v1
+      base-url: https://api.deepseek.com
       chat:
         options:
           model: deepseek-chat
     mcp:
       client:
-        connections:
-          finance-mcp:
-            type: SYNC
-            url: http://localhost:8082
+        type: SYNC
+        sse:
+          connections:
+            finance-mcp:
+              url: http://localhost:8082

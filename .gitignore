@@ -1,3 +1,5 @@
 .superpowers/
 .idea/
+.claude/
 .env
+finance-backend/data/
