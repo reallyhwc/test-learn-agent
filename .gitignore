@@ -3,3 +3,4 @@
 .claude/
 .env
 finance-backend/data/
+finance-agent/data/
