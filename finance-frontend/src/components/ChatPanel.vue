@@ -28,21 +28,43 @@ async function send() {
   const text = input.value
   input.value = ''
   messages.value.push({ role: 'user', text })
+  const assistantMsg = { role: 'assistant', text: '' }
+  messages.value.push(assistantMsg)
   thinking.value = true
+
   try {
-    const res = await fetch(`${AGENT_BASE}/api/chat`, {
+    const res = await fetch(`${AGENT_BASE}/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, userId: userStore.currentUser })
     })
-    const data = await res.json()
-    messages.value.push({ role: 'assistant', text: data.reply })
+
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buffer = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+
+      // Parse SSE format: "data: token\n\n"
+      const lines = buffer.split('\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          assistantMsg.text += line.slice(6)
+        }
+      }
+      await nextTick()
+      msgContainer.value.scrollTop = msgContainer.value.scrollHeight
+    }
   } catch (e) {
-    messages.value.push({ role: 'assistant', text: '抱歉，服务暂时不可用' })
+    if (!assistantMsg.text) {
+      assistantMsg.text = '抱歉，服务暂时不可用'
+    }
   } finally {
     thinking.value = false
-    await nextTick()
-    msgContainer.value?.scrollTo({ top: msgContainer.value.scrollHeight, behavior: 'smooth' })
   }
 }
 </script>
