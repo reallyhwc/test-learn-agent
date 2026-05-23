@@ -29,13 +29,12 @@ import { userStore } from '../stores/userStore.js'
 
 use([CanvasRenderer, LineChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
 
-const API_BASE = 'http://localhost:8080'
 const chartData = ref([])
 const hasData = computed(() => chartData.value.length > 0)
 
 async function fetchData() {
   try {
-    const res = await fetch(`${API_BASE}/api/transactions?userId=${userStore.currentUser}&pageSize=1000`)
+    const res = await fetch(`/api/transactions?userId=${userStore.currentUser}&pageSize=1000`)
     const data = await res.json()
     chartData.value = data.items || []
   } catch (e) {

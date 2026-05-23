@@ -18,7 +18,6 @@ import { ref, nextTick, watch } from 'vue'
 import ChatMessage from './ChatMessage.vue'
 import { userStore } from '../stores/userStore.js'
 
-const AGENT_BASE = 'http://localhost:8081'
 const messages = ref([])
 const input = ref('')
 const thinking = ref(false)
@@ -38,12 +37,12 @@ async function send() {
   const text = input.value
   input.value = ''
   messages.value.push({ role: 'user', text })
-  const assistantMsg = { role: 'assistant', text: '' }
-  messages.value.push(assistantMsg)
+  const assistantIdx = messages.value.length
+  messages.value.push({ role: 'assistant', text: '' })
   thinking.value = true
 
   try {
-    const res = await fetch(`${AGENT_BASE}/api/chat/stream`, {
+    const res = await fetch(`/api/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, userId: userStore.currentUser })
@@ -61,18 +60,22 @@ async function send() {
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          assistantMsg.text += line.slice(6)
+        if (line.startsWith('data:')) {
+          const payload = line.slice(5)
+          const content = payload.startsWith(' ') ? payload.slice(1) : payload
+          for (const ch of content) {
+            messages.value[assistantIdx].text += ch
+            if (msgContainer.value) {
+              msgContainer.value.scrollTop = msgContainer.value.scrollHeight
+            }
+            await new Promise(r => setTimeout(r, 20))
+          }
         }
-      }
-      await nextTick()
-      if (msgContainer.value) {
-        msgContainer.value.scrollTop = msgContainer.value.scrollHeight
       }
     }
   } catch (e) {
-    if (!assistantMsg.text) {
-      assistantMsg.text = '抱歉，服务暂时不可用'
+    if (!messages.value[assistantIdx]?.text) {
+      messages.value[assistantIdx].text = '抱歉，服务暂时不可用'
     }
   } finally {
     thinking.value = false

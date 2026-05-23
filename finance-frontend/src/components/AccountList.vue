@@ -25,15 +25,13 @@ import { userStore } from '../stores/userStore.js'
 const accounts = ref([])
 const loading = ref(true)
 
-const API_BASE = 'http://localhost:8080'
-
 const typeLabel = (t) => ({ CASH: '现金', BANK: '储蓄', CARD: '信用' }[t] || t)
 const tagType = (t) => ({ CASH: 'success', BANK: 'primary', CARD: 'warning' }[t] || 'info')
 
 async function fetchAccounts() {
   loading.value = true
   try {
-    const res = await fetch(`${API_BASE}/api/accounts?userId=${userStore.currentUser}`)
+    const res = await fetch(`/api/accounts?userId=${userStore.currentUser}`)
     accounts.value = await res.json()
   } finally {
     loading.value = false

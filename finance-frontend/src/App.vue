@@ -31,8 +31,8 @@ function refreshTx() { txList.value?.fetchList() }
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-.app { display: flex; flex-direction: column; min-height: 100vh; }
-.main-layout { flex: 1; }
-.content-area { padding: 20px; }
-.chat-area { min-height: calc(100vh - 60px); border-left: 1px solid var(--el-border-color-light); }
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.main-layout { flex: 1; overflow: hidden; }
+.content-area { padding: 20px; overflow-y: auto; }
+.chat-area { width: 400px; border-left: 1px solid var(--el-border-color-light); overflow: hidden; }
 </style>

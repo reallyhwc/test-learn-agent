@@ -40,7 +40,6 @@
 import { ref, onMounted, watch } from 'vue'
 import { userStore } from '../stores/userStore.js'
 
-const API_BASE = 'http://localhost:8080'
 const transactions = ref([])
 const categories = ref([])
 const loading = ref(true)
@@ -51,7 +50,7 @@ const pageSize = ref(20)
 const total = ref(0)
 
 onMounted(async () => {
-  const cRes = await fetch(`${API_BASE}/api/categories`)
+  const cRes = await fetch(`/api/categories`)
   categories.value = await cRes.json()
   await fetchList()
 })
@@ -60,7 +59,7 @@ watch(() => userStore.currentUser, () => { page.value = 1; fetchList() })
 
 async function fetchList() {
   loading.value = true
-  let url = `${API_BASE}/api/transactions?userId=${userStore.currentUser}&page=${page.value}&pageSize=${pageSize.value}&`
+  let url = `/api/transactions?userId=${userStore.currentUser}&page=${page.value}&pageSize=${pageSize.value}&`
   if (filterDate.value) url += `date=${filterDate.value}&`
   if (filterCategory.value) url += `category=${filterCategory.value}&`
   const res = await fetch(url)
