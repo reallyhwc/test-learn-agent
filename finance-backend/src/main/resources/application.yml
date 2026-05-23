@@ -1,0 +1,6 @@
+# finance-backend/src/main/resources/application.yml
+server:
+  port: 8080
+
+finance:
+  data-dir: data
