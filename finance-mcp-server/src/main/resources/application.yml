@@ -1,0 +1,13 @@
+server:
+  port: 8082
+
+spring:
+  ai:
+    mcp:
+      server:
+        name: finance-mcp-server
+        version: 1.0.0
+
+finance:
+  backend:
+    url: http://localhost:8080
