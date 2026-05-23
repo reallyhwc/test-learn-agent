@@ -2,14 +2,17 @@ package com.example.mcp.tool;
 
 import com.example.mcp.dto.AccountResponse;
 import com.example.mcp.dto.TransactionResponse;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springaicommunity.mcp.annotation.McpTool;
 import org.springaicommunity.mcp.annotation.McpToolParam;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -18,9 +21,11 @@ public class FinanceTools {
 
     private static final Logger log = LoggerFactory.getLogger(FinanceTools.class);
     private final RestClient restClient;
+    private final ObjectMapper objectMapper;
 
-    public FinanceTools(RestClient restClient) {
+    public FinanceTools(RestClient restClient, ObjectMapper objectMapper) {
         this.restClient = restClient;
+        this.objectMapper = objectMapper;
     }
 
     @McpTool(name = "query_balance", description = "查询指定账户的余额")
@@ -44,16 +49,34 @@ public class FinanceTools {
         log.info("listTransactions called with userId={}, date={}, category={}, type={}, accountId={}",
                 userId, date, category, type, accountId);
 
-        StringBuilder uri = new StringBuilder("/api/transactions?userId=").append(userId).append("&");
-        if (date != null) uri.append("date=").append(date).append("&");
-        if (category != null) uri.append("category=").append(category).append("&");
-        if (type != null) uri.append("type=").append(type).append("&");
-        if (accountId != null) uri.append("accountId=").append(accountId).append("&");
+        UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions")
+                .queryParam("userId", userId)
+                .queryParam("pageSize", 1000); // get all results
+        if (date != null) uriBuilder.queryParam("date", date);
+        if (category != null) uriBuilder.queryParam("category", category);
+        if (type != null) uriBuilder.queryParam("type", type);
+        if (accountId != null) uriBuilder.queryParam("accountId", accountId);
 
-        return List.of(restClient.get()
-                .uri(uri.toString())
+        java.net.URI uri = uriBuilder.build().toUri();
+        log.info("listTransactions URI: {}", uri);
+
+        Map<String, Object> pageResult = restClient.get()
+                .uri(uri)
                 .retrieve()
-                .body(TransactionResponse[].class));
+                .body(Map.class);
+
+        log.info("listTransactions response: total={}", pageResult.get("total"));
+
+        List<Map<String, Object>> rawItems = (List<Map<String, Object>>) pageResult.get("items");
+        if (rawItems == null || rawItems.isEmpty()) {
+            return List.of();
+        }
+
+        List<TransactionResponse> result = new ArrayList<>();
+        for (Map<String, Object> item : rawItems) {
+            result.add(objectMapper.convertValue(item, TransactionResponse.class));
+        }
+        return result;
     }
 
     @McpTool(name = "add_transaction", description = "添加一笔交易记录")
@@ -92,4 +115,5 @@ public class FinanceTools {
                 .retrieve()
                 .body(AccountResponse[].class));
     }
+
 }
