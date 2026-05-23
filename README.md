@@ -1,111 +1,276 @@
-# Personal Finance Agent
+# Personal Finance Agent · 个人记账 AI 助手
 
-一个基于 Java + Spring AI 的个人记账助手，集成了 AI 对话查询和 MCP 服务。
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Java 17](https://img.shields.io/badge/Java-17-orange)](https://adoptium.net/)
+[![Spring Boot 3.4](https://img.shields.io/badge/Spring_Boot-3.4-green)](https://spring.io/projects/spring-boot)
+[![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D)](https://vuejs.org/)
 
-## 项目简介
+一个基于 Java + Spring AI 的个人记账学习项目，集成 AI 对话查询和 MCP 协议（Model Context Protocol）服务。
 
-这是一个学习型 demo 项目，在 Java 生态体系下实践 AI Agent 和 MCP 协议。
+A learning project for AI Agent & MCP protocol in the Java ecosystem — personal finance bookkeeping with AI-powered natural language queries.
 
-### 功能
+---
 
-- **记账管理**：账户管理、交易录入、分类筛选
-- **AI 对话**：通过自然语言查询余额、交易记录，支持添加交易
-- **MCP 服务**：对外暴露标准 MCP Tool，可供 Claude Desktop 等客户端接入
+## 中文文档
 
-### 架构
+### 项目简介
+
+这是一个学习型 Demo 项目，目标是在 Java 生态体系下实践 **AI Agent** 和 **MCP 协议**。项目包含 4 个独立服务，通过标准接口协作，形成一条完整的 AI 工具调用链路。
+
+**核心亮点：**
+- AI Agent 通过自然语言对话完成记账、查账操作
+- 完整保留 MCP 协议链路（Agent → MCP Client → MCP Server → Backend），不做简化
+- 前后端分离，可独立部署
+- CSV 文件存储，零外部依赖，开箱即用
+
+### 系统架构
 
 ```
-Vue 前端 (:5173)
-    ├── HTTP REST → 记账后端 (:8080)
-    └── HTTP REST → Agent 服务 (:8081)
-                        │ MCP 协议 (SSE)
-                        ▼
-                    MCP Server (:8082)
-                        │ HTTP REST
-                        ▼
-                    记账后端 (:8080)
+┌─────────────────────────────────────────────────────────┐
+│                    Browser (:5173)                       │
+│              Vue 3 前端 · 记账面板 + AI 对话              │
+└──────────┬──────────────────────┬───────────────────────┘
+           │ HTTP REST            │ HTTP REST
+           ▼                      ▼
+┌──────────────────┐   ┌──────────────────────────────────┐
+│  Backend (:8080) │   │       Agent (:8081)               │
+│  Spring Boot     │   │  Spring AI + ChatClient           │
+│  REST API        │◄──│  DeepSeek (LLM)                   │
+│  CSV 存储        │   │  MCP Client                       │
+└──────────────────┘   └───────────┬──────────────────────┘
+                                   │ MCP Protocol (SSE)
+                                   ▼
+                      ┌──────────────────────────────────┐
+                      │    MCP Server (:8082)             │
+                      │  Spring AI MCP Server WebMVC      │
+                      │  4 Tools: query_balance,          │
+                      │  list_transactions,               │
+                      │  add_transaction, list_accounts   │
+                      └───────────┬──────────────────────┘
+                                  │ HTTP REST
+                                  ▼
+                      ┌──────────────────┐
+                      │  Backend (:8080) │
+                      └──────────────────┘
 ```
+
+**数据流说明：**
+- **用户 → 前端**：Vue 3 SPA，直接调用 Backend REST API 和 Agent Chat API
+- **前端 → Agent**：发送自然语言消息，Agent 调用 DeepSeek 模型
+- **Agent → MCP Server**：DeepSeek 返回 function call，Agent 通过 MCP Client 调用 MCP Tool
+- **MCP Server → Backend**：MCP Server 将 Tool 调用转换为 HTTP 请求，访问 Backend API
+- **MCP Protocol**：采用 SSE (Server-Sent Events) 传输，协议版本 2024-11-05
+
+### 设计缘由
+
+**为什么要分成 4 个独立服务？**
+
+作为一个学习项目，保持完整的 MCP 协议链路是核心目标：
+
+1. **Backend (8080)**：纯粹的记账 REST API，不感知 AI/MCP，可以独立使用
+2. **MCP Server (8082)**：将 Backend API 包装为 MCP Tool，对外暴露标准 MCP 协议
+3. **Agent (8081)**：作为 MCP Client，动态发现 MCP Tool，结合 LLM 实现智能对话
+4. **Frontend (5173)**：独立的 Vue 前端，可以替换为任何前端框架
+
+这种架构清晰地展示了 MCP 协议的价值——**中间层（MCP Server）解耦了 AI 和业务**，使得：
+- Backend 不需要感知 AI 的存在
+- Agent 不需要知道 Backend 的具体实现
+- MCP Server 可以独立演进，增加更多 Tool
+- 任何 MCP Client（Claude Desktop、其他 Agent）都可以直接接入
+
+**为什么选择 Spring AI？**
+
+Spring AI 1.1 提供了完整的 MCP 支持：
+- `@McpTool` 注解零代码生成 MCP Tool Schema
+- MCP Client 自动发现和调用 Tool
+- 与 Spring Boot 生态无缝集成
+
+**为什么用 CSV 而非数据库？**
+
+保持零外部依赖，项目 clone 后即可运行，无需安装 MySQL/PostgreSQL。CSV 文件可直接用文本编辑器查看，方便调试。
+
+### 功能特性
+
+**记账管理（Backend + Frontend）**
+- 账户管理：创建账户、查看余额
+- 交易录入：收支记录、分类标签、备注
+- 分类筛选：按日期、分类、类型过滤
+- CSV 存储：Jackson CsvMapper，自动字段转义
+
+**AI 对话（Agent + MCP Server）**
+- 自然语言查询余额：`"我的账户余额是多少？"`
+- 自然语言查交易：`"最近有什么餐饮支出？"`
+- 自然语言记账：`"帮我记一笔午餐50元"`
+- MCP 协议：标准 SSE 传输，可接入 Claude Desktop 等外部客户端
 
 ### 技术栈
 
-| 模块 | 技术 |
-|------|------|
-| 记账后端 | Spring Boot 3.4 + Java 17 + CSV 存储 |
-| MCP Server | Spring AI 1.1 + MCP Server WebMVC |
-| Agent | Spring AI 1.1 + DeepSeek + MCP Client |
-| 前端 | Vue 3 + Vite |
+| 模块 | 技术 | 说明 |
+|------|------|------|
+| Backend | Spring Boot 3.4.5 + Java 17 | REST API，Jackson CsvMapper |
+| MCP Server | Spring AI 1.1.0 + MCP Server WebMVC | SSE 传输，4 个 MCP Tool |
+| Agent | Spring AI 1.1.0 + DeepSeek | MCP Client，ChatClient |
+| Frontend | Vue 3 + Vite | Composition API，fetch-based |
+| 存储 | CSV 文件 | 零外部依赖 |
+| LLM | DeepSeek V3 (deepseek-chat) | OpenAI 兼容 API |
+| MCP | 2024-11-05 Protocol | SYNC + SSE Transport |
 
-## 快速开始
+### 项目结构
 
-### 环境要求
-
-- Java 17+
-- Node.js 18+
-- DeepSeek API Key（[获取地址](https://platform.deepseek.com/api_keys)）
-
-### 启动
-
-```bash
-# 1. 安装前端依赖
-cd finance-frontend && npm install && cd ..
-
-# 2. 设置 DeepSeek API Key
-export DEEPSEEK_API_KEY=sk-your-key-here
-
-# 3. 一键启动
-./start-all.sh
-
-# 4. 打开浏览器
-open http://localhost:5173
+```
+personal-finance-agent/
+├── finance-backend/              # 记账后端 (Spring Boot)
+│   ├── src/main/java/com/example/finance/
+│   │   ├── controller/           # AccountController, TransactionController, CategoryController
+│   │   ├── service/              # FinanceService
+│   │   ├── repository/           # CsvDataStore (CSV 读写)
+│   │   ├── model/                # Account, Transaction, Category, Enums
+│   │   └── config/               # CORS 配置
+│   └── pom.xml
+├── finance-mcp-server/           # MCP Server (Spring AI)
+│   ├── src/main/java/com/example/mcp/
+│   │   ├── tool/                 # FinanceTools (@McpTool 注解)
+│   │   ├── dto/                  # DTO for REST responses
+│   │   └── config/               # RestClient 配置
+│   └── pom.xml
+├── finance-agent/                # Agent 服务 (Spring AI + MCP Client)
+│   ├── src/main/java/com/example/agent/
+│   │   ├── controller/           # ChatController
+│   │   ├── dto/                  # ChatRequest/Response
+│   │   └── config/               # CORS 配置
+│   └── pom.xml
+├── finance-frontend/             # Vue 3 前端
+│   ├── src/
+│   │   ├── App.vue               # 主布局 (记账 + 对话)
+│   │   └── components/           # AppHeader, AccountList, TransactionForm,
+│   │                               TransactionList, ChatPanel, ChatMessage
+│   └── package.json
+├── .env.example                  # API Key 配置模板
+├── start-all.sh                  # 一键启动脚本
+└── README.md
 ```
 
-### 手动启动
+### 快速开始
+
+#### 环境要求
+
+- **Java 17+**（推荐 Homebrew: `brew install openjdk@17`）
+- **Node.js 18+**
+- **DeepSeek API Key**（[免费注册获取](https://platform.deepseek.com/api_keys)）
+
+> **不需要**：Maven（项目自带 Maven Wrapper）、数据库、Docker
+
+#### 1. 克隆项目
 
 ```bash
-# 终端 1: 记账后端
+git clone https://github.com/your-username/personal-finance-agent.git
+cd personal-finance-agent
+```
+
+#### 2. 配置 API Key
+
+```bash
+# 复制并编辑配置文件
+cp .env.example .env
+# 编辑 .env 填入你的 DeepSeek API Key
+# DEEPSEEK_API_KEY=sk-your-real-key-here
+```
+
+#### 3. 安装前端依赖
+
+```bash
+cd finance-frontend && npm install && cd ..
+```
+
+#### 4. 一键启动
+
+```bash
+# 设置 DeepSeek API Key
+export DEEPSEEK_API_KEY=sk-your-key-here
+
+# 启动所有服务
+./start-all.sh
+```
+
+#### 5. 打开浏览器
+
+访问 **http://localhost:5173**，开始使用！
+
+#### 手动启动（4 个终端）
+
+```bash
+# 终端 1: 记账后端 (:8080)
 cd finance-backend && ./mvnw spring-boot:run
 
-# 终端 2: MCP Server
+# 终端 2: MCP Server (:8082)
 cd finance-mcp-server && ./mvnw spring-boot:run
 
-# 终端 3: Agent
+# 终端 3: Agent (:8081)
+export DEEPSEEK_API_KEY=sk-your-key-here
 cd finance-agent && ./mvnw spring-boot:run
 
-# 终端 4: 前端
+# 终端 4: 前端 (:5173)
 cd finance-frontend && npm run dev
 ```
 
-## API 文档
+### API 文档
 
-### 记账后端 (:8080)
+#### 记账后端 (:8080)
+
+| Method | Path | Description | Parameters |
+|--------|------|-------------|------------|
+| GET | `/api/accounts` | 查询所有账户 | - |
+| POST | `/api/accounts` | 创建账户 | `{"name":"...","type":"CASH\|BANK\|CARD"}` |
+| GET | `/api/accounts/{id}/balance` | 查询账户余额 | - |
+| GET | `/api/transactions` | 查询交易列表 | `?date=&category=&type=&accountId=` |
+| POST | `/api/transactions` | 添加交易 | `{"accountId":1,"type":"EXPENSE","amount":50,"category":"餐饮","note":"午餐","date":"2026-05-23"}` |
+| GET | `/api/categories` | 查询分类列表 | - |
+
+#### Agent (:8081)
 
 | Method | Path | Description |
 |--------|------|-------------|
-| GET | /api/accounts | 账户列表 |
-| POST | /api/accounts | 创建账户 |
-| GET | /api/accounts/{id}/balance | 账户余额 |
-| GET | /api/transactions | 交易列表 (?date=&category=&type=&accountId=) |
-| POST | /api/transactions | 录入交易 |
-| GET | /api/categories | 分类列表 |
+| POST | `/api/chat` | AI 对话 `{"message": "查询余额"}` → `{"reply": "..."}` |
 
-### Agent (:8081)
+#### MCP Server Tools (:8082)
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | /api/chat | 对话接口 `{"message": "..."}` → `{"reply": "..."}` |
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `query_balance` | 查询账户余额 | `accountId: Long` |
+| `list_transactions` | 查询交易记录 | `date?`, `category?`, `type?`, `accountId?` |
+| `add_transaction` | 添加交易 | `accountId`, `type`, `amount`, `category`, `note?` |
+| `list_accounts` | 查询所有账户 | - |
 
-### MCP Server (:8082)
+### 使用指南
 
-| Tool | Description |
-|------|-------------|
-| query_balance | 查询指定账户的余额 |
-| list_transactions | 查询交易记录列表 |
-| add_transaction | 添加一笔交易记录 |
-| list_accounts | 查询所有账户列表 |
+#### Web 界面
 
-## MCP 接入
+浏览器打开 http://localhost:5173 后：
 
-在 Claude Desktop 或其他 MCP 客户端中配置：
+1. **左侧面板**：查看账户、添加交易、浏览交易列表
+2. **右侧面板**：AI 对话窗口，输入自然语言操作
+
+#### AI 对话示例
+
+```
+你: 我的账户余额是多少？
+AI: 您的默认现金账户当前余额为 20,273.96 元。
+
+你: 这个月餐饮花了多少钱？
+AI: 本月餐饮支出共 1,500 元，共 15 笔。
+
+你: 帮我记一笔：午餐50元
+AI: 已为您记录：支出 50 元，分类：餐饮，备注：午餐。
+
+你: 有哪些账户？
+AI: 您共有 1 个账户：默认现金账户（现金），余额 20,273.96 元。
+```
+
+### MCP 接入
+
+MCP Server 对外暴露标准 MCP 协议，任何 MCP 客户端都可以接入：
+
+**Claude Desktop 配置：**
 
 ```json
 {
@@ -117,18 +282,100 @@ cd finance-frontend && npm run dev
 }
 ```
 
-## 项目结构
+添加后，Claude Desktop 即可调用 4 个记账 Tool。
+
+**自定义 MCP Client：**
+
+MCP Server 运行在 `http://localhost:8082/sse`，使用 SSE 传输 + 2024-11-05 协议。任何兼容的 MCP SDK 都可以接入。
+
+### 常见问题
+
+**Q: 启动报 "Web server failed to start. Port XXXX was already in use"**
+
+端口被占用。执行以下命令释放端口：
+
+```bash
+lsof -ti:8080 | xargs kill -9  # Backend
+lsof -ti:8081 | xargs kill -9  # Agent
+lsof -ti:8082 | xargs kill -9  # MCP Server
+lsof -ti:5173 | xargs kill -9  # Frontend
+```
+
+**Q: Agent 返回错误 "HTTP 404"**
+
+检查 DeepSeek API Key 是否正确配置，且在启动 Agent 前 `export DEEPSEEK_API_KEY`。
+
+**Q: 如何重置数据？**
+
+删除 Backend 的 data 目录后重启即可：
+
+```bash
+rm -rf finance-backend/data
+```
+
+**Q: 可以用其他 LLM 吗？**
+
+可以。修改 `finance-agent/src/main/resources/application.yml` 中的 OpenAI 兼容配置（`base-url`、`model`、`api-key`），支持任何 OpenAI 兼容 API（如 OpenAI、DeepSeek、通义千问等）。
+
+---
+
+## English
+
+### Overview
+
+A learning project to explore **AI Agent** and **MCP (Model Context Protocol)** in the Java ecosystem. Built with Spring Boot + Spring AI + Vue 3.
+
+**Why this project exists:** As AI tools become mainstream, understanding how to build AI-powered applications in the Java ecosystem is essential. This project demonstrates the full MCP protocol chain — from frontend to LLM to tool execution — without cutting corners.
+
+### Architecture
 
 ```
-personal-finance-agent/
-├── finance-backend/          # 记账后端
-├── finance-mcp-server/       # MCP Server
-├── finance-agent/            # Agent 服务
-├── finance-frontend/         # Vue 前端
-├── start-all.sh              # 一键启动脚本
-└── README.md
+Browser (:5173) → Frontend (Vue 3)
+                      ├── REST API → Backend (:8080) [Spring Boot, CSV]
+                      └── REST API → Agent (:8081) [Spring AI + DeepSeek]
+                                        │ MCP/SSE
+                                        ▼
+                                    MCP Server (:8082) [Spring AI MCP]
+                                        │ REST
+                                        ▼
+                                    Backend (:8080)
 ```
 
-## License
+### Quick Start
 
-MIT
+```bash
+# Prerequisites: Java 17+, Node.js 18+, DeepSeek API Key
+
+git clone https://github.com/your-username/personal-finance-agent.git
+cd personal-finance-agent
+cp .env.example .env  # Edit with your DeepSeek API key
+cd finance-frontend && npm install && cd ..
+export DEEPSEEK_API_KEY=sk-your-key-here
+./start-all.sh
+# Open http://localhost:5173
+```
+
+### AI Chat Examples
+
+```
+You: What's my account balance?
+AI: Your default cash account balance is ¥20,273.96.
+
+You: Add an expense: lunch 50 yuan
+AI: Recorded: EXPENSE ¥50.00, category: 餐饮, note: 午餐.
+
+You: Show me all my accounts
+AI: You have 1 account: 默认现金账户 (CASH), balance ¥20,273.96.
+```
+
+### License
+
+MIT © 2026
+
+See [LICENSE](LICENSE) for details.
+
+---
+
+<p align="center">
+  <sub>Built with Spring AI + DeepSeek + Vue 3 · MCP Protocol 2024-11-05</sub>
+</p>
