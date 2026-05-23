@@ -3,17 +3,18 @@
     <div class="chat-header">AI 助手</div>
     <div class="chat-messages" ref="msgContainer">
       <ChatMessage v-for="(m, i) in messages" :key="i" :role="m.role" :text="m.text" />
-      <div v-if="thinking" class="thinking">思考中...</div>
+      <div v-if="thinking && !messages.length" class="thinking">思考中...</div>
+      <div v-if="thinking && messages.length && messages[messages.length-1].role === 'assistant'" class="streaming-dot"></div>
     </div>
     <div class="chat-input">
-      <input v-model="input" @keyup.enter="send" placeholder="比如：我的余额是多少？" :disabled="thinking" />
-      <button @click="send" :disabled="thinking">发送</button>
+      <el-input v-model="input" @keyup.enter="send" placeholder="比如：我的余额是多少？" :disabled="thinking" clearable />
+      <el-button type="primary" @click="send" :disabled="thinking" style="margin-left: 8px">发送</el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick } from 'vue'
+import { ref, nextTick, watch } from 'vue'
 import ChatMessage from './ChatMessage.vue'
 import { userStore } from '../stores/userStore.js'
 
@@ -22,6 +23,15 @@ const messages = ref([])
 const input = ref('')
 const thinking = ref(false)
 const msgContainer = ref(null)
+
+// Auto-scroll to bottom when messages change
+watch(() => messages.value.length, () => {
+  nextTick(() => {
+    if (msgContainer.value) {
+      msgContainer.value.scrollTop = msgContainer.value.scrollHeight
+    }
+  })
+})
 
 async function send() {
   if (!input.value.trim() || thinking.value) return
@@ -48,7 +58,6 @@ async function send() {
       if (done) break
       buffer += decoder.decode(value, { stream: true })
 
-      // Parse SSE format: "data: token\n\n"
       const lines = buffer.split('\n')
       buffer = lines.pop() || ''
       for (const line of lines) {
@@ -57,7 +66,9 @@ async function send() {
         }
       }
       await nextTick()
-      msgContainer.value.scrollTop = msgContainer.value.scrollHeight
+      if (msgContainer.value) {
+        msgContainer.value.scrollTop = msgContainer.value.scrollHeight
+      }
     }
   } catch (e) {
     if (!assistantMsg.text) {
@@ -72,12 +83,26 @@ async function send() {
 <style scoped>
 .chat-panel {
   display: flex; flex-direction: column; height: 100%;
-  border-left: 1px solid #eee; background: #fafafa;
+  background: var(--el-bg-color);
 }
-.chat-header { padding: 12px 16px; font-weight: 600; border-bottom: 1px solid #eee; }
-.chat-messages { flex: 1; overflow-y: auto; padding: 12px; }
-.chat-input { display: flex; padding: 12px; gap: 8px; border-top: 1px solid #eee; }
-.chat-input input { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
-.chat-input button { padding: 8px 16px; background: #3498db; color: #fff; border: none; border-radius: 4px; cursor: pointer; }
-.thinking { color: #888; font-size: 0.85rem; font-style: italic; }
+.chat-header {
+  padding: 12px 16px; font-weight: 600;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+.chat-messages {
+  flex: 1; overflow-y: auto; padding: 12px;
+}
+.chat-input {
+  display: flex; padding: 12px; gap: 0;
+  border-top: 1px solid var(--el-border-color-light);
+}
+.thinking { color: var(--el-text-color-secondary); font-size: 0.85rem; font-style: italic; padding: 8px; }
+.streaming-dot {
+  width: 8px; height: 8px; background: var(--el-color-primary);
+  border-radius: 50%; animation: pulse 1s infinite; margin: 8px;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
 </style>

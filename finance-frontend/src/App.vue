@@ -1,16 +1,17 @@
 <template>
   <div class="app">
     <AppHeader />
-    <div class="main-layout">
-      <div class="content-area">
+    <el-container class="main-layout">
+      <el-main class="content-area">
         <AccountList />
         <TransactionForm @saved="refreshTx" />
         <TransactionList ref="txList" />
-      </div>
-      <div class="chat-area">
+        <ChartPanel />
+      </el-main>
+      <el-aside width="400px" class="chat-area">
         <ChatPanel />
-      </div>
-    </div>
+      </el-aside>
+    </el-container>
   </div>
 </template>
 
@@ -21,6 +22,7 @@ import AccountList from './components/AccountList.vue'
 import TransactionForm from './components/TransactionForm.vue'
 import TransactionList from './components/TransactionList.vue'
 import ChatPanel from './components/ChatPanel.vue'
+import ChartPanel from './components/ChartPanel.vue'
 
 const txList = ref(null)
 function refreshTx() { txList.value?.fetchList() }
@@ -30,7 +32,7 @@ function refreshTx() { txList.value?.fetchList() }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 .app { display: flex; flex-direction: column; min-height: 100vh; }
-.main-layout { display: flex; flex: 1; }
-.content-area { flex: 1; padding: 20px; min-width: 0; }
-.chat-area { width: 380px; min-height: calc(100vh - 56px); }
+.main-layout { flex: 1; }
+.content-area { padding: 20px; }
+.chat-area { min-height: calc(100vh - 60px); border-left: 1px solid var(--el-border-color-light); }
 </style>

@@ -2,34 +2,37 @@
   <div class="tx-list">
     <h3>交易记录</h3>
     <div class="filters">
-      <input v-model="filterDate" type="date" @change="fetchList" />
-      <select v-model="filterCategory" @change="fetchList">
-        <option value="">全部分类</option>
-        <option v-for="c in categories" :key="c.name" :value="c.name">{{ c.name }}</option>
-      </select>
+      <el-date-picker v-model="filterDate" type="date" placeholder="选择日期" size="small" clearable
+        value-format="YYYY-MM-DD" @change="page=1;fetchList()" style="width: 150px" />
+      <el-select v-model="filterCategory" placeholder="全部分类" size="small" clearable
+        @change="page=1;fetchList()" style="width: 130px">
+        <el-option v-for="c in categories" :key="c.name" :label="c.name" :value="c.name" />
+      </el-select>
     </div>
-    <div v-if="loading">加载中...</div>
-    <template v-else>
-      <table>
-        <thead>
-          <tr><th>日期</th><th>分类</th><th>类型</th><th>金额</th><th>备注</th></tr>
-        </thead>
-        <tbody>
-          <tr v-for="t in transactions" :key="t.id">
-            <td>{{ t.date }}</td>
-            <td>{{ t.category }}</td>
-            <td :class="t.type">{{ t.type === 'INCOME' ? '收入' : '支出' }}</td>
-            <td :class="t.type">¥{{ t.amount.toFixed(2) }}</td>
-            <td>{{ t.note }}</td>
-          </tr>
-        </tbody>
-      </table>
-      <div class="pagination">
-        <button :disabled="page <= 1" @click="goPage(page - 1)">上一页</button>
-        <span>第 {{ page }} / {{ totalPages }} 页 (共 {{ total }} 条)</span>
-        <button :disabled="page >= totalPages" @click="goPage(page + 1)">下一页</button>
-      </div>
-    </template>
+    <el-table :data="transactions" v-loading="loading" stripe size="small" style="width: 100%">
+      <el-table-column prop="date" label="日期" width="110" />
+      <el-table-column prop="category" label="分类" width="80" />
+      <el-table-column label="类型" width="70">
+        <template #default="{ row }">
+          <el-tag :type="row.type === 'INCOME' ? 'success' : 'danger'" size="small">
+            {{ row.type === 'INCOME' ? '收入' : '支出' }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="金额" width="120">
+        <template #default="{ row }">
+          <span :style="{ color: row.type === 'INCOME' ? 'var(--el-color-success)' : 'var(--el-color-danger)' }">
+            ¥{{ row.amount.toFixed(2) }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="note" label="备注" />
+    </el-table>
+    <div class="pagination">
+      <el-pagination background layout="prev, pager, next, total" :total="total"
+        v-model:page-size="pageSize" v-model:current-page="page" :page-sizes="[10, 20, 50]"
+        @current-change="fetchList" @size-change="page=1;fetchList()" small />
+    </div>
   </div>
 </template>
 
@@ -46,7 +49,6 @@ const filterCategory = ref('')
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
-const totalPages = ref(0)
 
 onMounted(async () => {
   const cRes = await fetch(`${API_BASE}/api/categories`)
@@ -65,27 +67,15 @@ async function fetchList() {
   const data = await res.json()
   transactions.value = data.items
   total.value = data.total
-  totalPages.value = data.totalPages
   loading.value = false
-}
-
-function goPage(p) {
-  page.value = p
-  fetchList()
 }
 
 defineExpose({ fetchList })
 </script>
 
 <style scoped>
+.tx-list { margin-bottom: 20px; }
+.tx-list h3 { margin-bottom: 12px; }
 .filters { display: flex; gap: 8px; margin-bottom: 12px; }
-.filters input, .filters select { padding: 6px; border: 1px solid #ddd; border-radius: 4px; }
-table { width: 100%; border-collapse: collapse; }
-th, td { padding: 8px 12px; border-bottom: 1px solid #eee; text-align: left; }
-.INCOME { color: #2ecc71; }
-.EXPENSE { color: #e74c3c; }
-.pagination { display: flex; align-items: center; justify-content: center; gap: 12px; margin-top: 12px; }
-.pagination button { padding: 6px 12px; border: 1px solid #ddd; border-radius: 4px; background: #fff; cursor: pointer; }
-.pagination button:disabled { color: #ccc; cursor: default; }
-.pagination span { font-size: 0.85rem; color: #666; }
+.pagination { margin-top: 12px; display: flex; justify-content: center; }
 </style>

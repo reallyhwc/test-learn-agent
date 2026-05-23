@@ -1,16 +1,20 @@
 <template>
   <div class="account-list">
     <h3>账户</h3>
-    <div v-if="loading">加载中...</div>
-    <div v-else class="accounts">
-      <div v-for="account in accounts" :key="account.id" class="account-card">
-        <span class="account-type">{{ typeLabel(account.type) }}</span>
-        <span class="account-name">{{ account.name }}</span>
-        <span class="account-balance" :class="{ negative: account.balance < 0 }">
-          ¥{{ account.balance.toFixed(2) }}
-        </span>
-      </div>
-    </div>
+    <div v-if="loading" v-loading="loading" style="height: 60px"></div>
+    <el-row v-else :gutter="12">
+      <el-col v-for="account in accounts" :key="account.id" :span="8">
+        <el-card shadow="hover" class="account-card">
+          <div class="card-top">
+            <el-tag :type="tagType(account.type)" size="small">{{ typeLabel(account.type) }}</el-tag>
+            <span class="account-name">{{ account.name }}</span>
+          </div>
+          <div class="balance" :class="{ negative: account.balance < 0 }">
+            ¥{{ account.balance.toFixed(2) }}
+          </div>
+        </el-card>
+      </el-col>
+    </el-row>
   </div>
 </template>
 
@@ -24,6 +28,7 @@ const loading = ref(true)
 const API_BASE = 'http://localhost:8080'
 
 const typeLabel = (t) => ({ CASH: '现金', BANK: '储蓄', CARD: '信用' }[t] || t)
+const tagType = (t) => ({ CASH: 'success', BANK: 'primary', CARD: 'warning' }[t] || 'info')
 
 async function fetchAccounts() {
   loading.value = true
@@ -40,14 +45,10 @@ watch(() => userStore.currentUser, fetchAccounts)
 </script>
 
 <style scoped>
-.accounts { display: flex; gap: 12px; flex-wrap: wrap; }
-.account-card {
-  flex: 1; min-width: 180px; padding: 16px;
-  background: #f5f5f5; border-radius: 8px;
-  display: flex; flex-direction: column; gap: 4px;
-}
-.account-type { font-size: 0.8rem; color: #888; }
+.account-list { margin-bottom: 20px; }
+.account-list h3 { margin-bottom: 12px; }
+.card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .account-name { font-weight: 600; }
-.account-balance { font-size: 1.2rem; font-weight: 700; color: #2ecc71; }
-.account-balance.negative { color: #e74c3c; }
+.balance { font-size: 1.4rem; font-weight: 700; color: var(--el-color-success); }
+.balance.negative { color: var(--el-color-danger); }
 </style>
