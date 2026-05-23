@@ -7,14 +7,16 @@ public class Account {
     private String name;
     private AccountType type;
     private BigDecimal balance;
+    private String userId;
 
     public Account() {}
 
-    public Account(Long id, String name, AccountType type, BigDecimal balance) {
+    public Account(Long id, String name, AccountType type, BigDecimal balance, String userId) {
         this.id = id;
         this.name = name;
         this.type = type;
         this.balance = balance;
+        this.userId = userId;
     }
 
     public Long getId() { return id; }
@@ -25,4 +27,6 @@ public class Account {
     public void setType(AccountType type) { this.type = type; }
     public BigDecimal getBalance() { return balance; }
     public void setBalance(BigDecimal balance) { this.balance = balance; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
 }

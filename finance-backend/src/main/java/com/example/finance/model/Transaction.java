@@ -11,11 +11,12 @@ public class Transaction {
     private String category;
     private String note;
     private LocalDate date;
+    private String userId;
 
     public Transaction() {}
 
     public Transaction(Long id, Long accountId, TransactionType type, BigDecimal amount,
-                       String category, String note, LocalDate date) {
+                       String category, String note, LocalDate date, String userId) {
         this.id = id;
         this.accountId = accountId;
         this.type = type;
@@ -23,6 +24,7 @@ public class Transaction {
         this.category = category;
         this.note = note;
         this.date = date;
+        this.userId = userId;
     }
 
     public Long getId() { return id; }
@@ -39,4 +41,6 @@ public class Transaction {
     public void setNote(String note) { this.note = note; }
     public LocalDate getDate() { return date; }
     public void setDate(LocalDate date) { this.date = date; }
+    public String getUserId() { return userId; }
+    public void setUserId(String userId) { this.userId = userId; }
 }

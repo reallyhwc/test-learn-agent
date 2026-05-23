@@ -15,6 +15,7 @@
 <script setup>
 import { ref, nextTick } from 'vue'
 import ChatMessage from './ChatMessage.vue'
+import { userStore } from '../stores/userStore.js'
 
 const AGENT_BASE = 'http://localhost:8081'
 const messages = ref([])
@@ -32,7 +33,7 @@ async function send() {
     const res = await fetch(`${AGENT_BASE}/api/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text })
+      body: JSON.stringify({ message: text, userId: userStore.currentUser })
     })
     const data = await res.json()
     messages.value.push({ role: 'assistant', text: data.reply })

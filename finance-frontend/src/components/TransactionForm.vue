@@ -24,7 +24,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch } from 'vue'
+import { userStore } from '../stores/userStore.js'
 
 const emit = defineEmits(['saved'])
 const API_BASE = 'http://localhost:8080'
@@ -37,14 +38,18 @@ const form = reactive({
   accountId: '', type: '', amount: null, category: '', note: ''
 })
 
+async function fetchAccounts() {
+  const res = await fetch(`${API_BASE}/api/accounts?userId=${userStore.currentUser}`)
+  accounts.value = await res.json()
+}
+
 onMounted(async () => {
-  const [aRes, cRes] = await Promise.all([
-    fetch(`${API_BASE}/api/accounts`),
-    fetch(`${API_BASE}/api/categories`)
-  ])
-  accounts.value = await aRes.json()
+  const cRes = await fetch(`${API_BASE}/api/categories`)
   categories.value = await cRes.json()
+  await fetchAccounts()
 })
+
+watch(() => userStore.currentUser, fetchAccounts)
 
 async function submit() {
   submitting.value = true
@@ -55,6 +60,7 @@ async function submit() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         ...form,
+        userId: userStore.currentUser,
         date: new Date().toISOString().split('T')[0]
       })
     })

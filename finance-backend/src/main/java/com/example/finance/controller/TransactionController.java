@@ -20,11 +20,12 @@ public class TransactionController {
 
     @GetMapping
     public List<Transaction> listTransactions(
+            @RequestParam(required = false, defaultValue = "default") String userId,
             @RequestParam(required = false) Long accountId,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String type) {
-        return financeService.listTransactions(accountId, date, category, type);
+        return financeService.listTransactions(userId, accountId, date, category, type);
     }
 
     @PostMapping

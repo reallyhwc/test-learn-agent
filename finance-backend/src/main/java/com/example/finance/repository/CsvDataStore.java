@@ -40,9 +40,28 @@ public class CsvDataStore {
             .addColumn("name")
             .addColumn("type")
             .addColumn("balance")
+            .addColumn("userId")
+            .build().withHeader();
+
+    private static final CsvSchema ACCOUNT_SCHEMA_OLD = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("name")
+            .addColumn("type")
+            .addColumn("balance")
             .build().withHeader();
 
     private static final CsvSchema TRANSACTION_SCHEMA = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("accountId")
+            .addColumn("type")
+            .addColumn("amount")
+            .addColumn("category")
+            .addColumn("note")
+            .addColumn("date")
+            .addColumn("userId")
+            .build().withHeader();
+
+    private static final CsvSchema TRANSACTION_SCHEMA_OLD = CsvSchema.builder()
             .addColumn("id")
             .addColumn("accountId")
             .addColumn("type")
@@ -72,6 +91,13 @@ public class CsvDataStore {
         return new ArrayList<>(accounts);
     }
 
+    public List<Account> findAllAccountsByUserId(String userId) {
+        if (userId == null || userId.isBlank()) return findAllAccounts();
+        return accounts.stream()
+                .filter(a -> userId.equals(a.getUserId()))
+                .collect(Collectors.toList());
+    }
+
     public Optional<Account> findAccountById(Long id) {
         return accounts.stream().filter(a -> a.getId().equals(id)).findFirst();
     }
@@ -79,6 +105,7 @@ public class CsvDataStore {
     public Account saveAccount(Account account) {
         if (account.getId() == null) {
             account.setId(accountIdGen.getAndIncrement());
+            if (account.getUserId() == null) account.setUserId("default");
             accounts.add(account);
         } else {
             for (int i = 0; i < accounts.size(); i++) {
@@ -99,18 +126,20 @@ public class CsvDataStore {
     }
 
     public List<Transaction> findTransactions(Long accountId, LocalDate date,
-                                               String category, TransactionType type) {
+                                               String category, TransactionType type, String userId) {
         return transactions.stream()
                 .filter(t -> accountId == null || t.getAccountId().equals(accountId))
                 .filter(t -> date == null || t.getDate().equals(date))
                 .filter(t -> category == null || category.equals(t.getCategory()))
                 .filter(t -> type == null || t.getType() == type)
+                .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
                 .collect(Collectors.toList());
     }
 
     public void saveTransaction(Transaction transaction) {
         if (transaction.getId() == null) {
             transaction.setId(transactionIdGen.getAndIncrement());
+            if (transaction.getUserId() == null) transaction.setUserId("default");
             transactions.add(transaction);
             findAccountById(transaction.getAccountId()).ifPresent(account -> {
                 BigDecimal delta = transaction.getType() == TransactionType.INCOME
@@ -151,13 +180,30 @@ public class CsvDataStore {
         }
     }
 
+    private boolean csvHasUserIdColumn(File file) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String header = reader.readLine();
+            return header != null && header.contains("userId");
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
     private void loadAccounts() {
-        List<Account> loaded = loadFromCsv("accounts.csv", Account.class, ACCOUNT_SCHEMA);
-        if (loaded.isEmpty()) {
-            saveAccount(new Account(null, "默认现金账户", AccountType.CASH, BigDecimal.ZERO));
+        File file = new File(dataDir, "accounts.csv");
+        if (!file.exists()) {
+            saveAccount(new Account(null, "默认现金账户", AccountType.CASH, BigDecimal.ZERO, "default"));
             return;
         }
-        accounts.addAll(loaded);
+        if (csvHasUserIdColumn(file)) {
+            List<Account> loaded = loadFromCsv("accounts.csv", Account.class, ACCOUNT_SCHEMA);
+            accounts.addAll(loaded);
+        } else {
+            List<Account> loaded = loadFromCsv("accounts.csv", Account.class, ACCOUNT_SCHEMA_OLD);
+            loaded.forEach(a -> a.setUserId("default"));
+            accounts.addAll(loaded);
+            persistAccounts();
+        }
         accounts.stream().mapToLong(Account::getId).max()
                 .ifPresent(max -> accountIdGen.set(max + 1));
     }
@@ -167,9 +213,17 @@ public class CsvDataStore {
     }
 
     private void loadTransactions() {
-        List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA);
-        if (loaded.isEmpty()) return;
-        transactions.addAll(loaded);
+        File file = new File(dataDir, "transactions.csv");
+        if (!file.exists()) return;
+        if (csvHasUserIdColumn(file)) {
+            List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA);
+            transactions.addAll(loaded);
+        } else {
+            List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA_OLD);
+            loaded.forEach(t -> t.setUserId("default"));
+            transactions.addAll(loaded);
+            persistTransactions();
+        }
         transactions.stream().mapToLong(Transaction::getId).max()
                 .ifPresent(max -> transactionIdGen.set(max + 1));
     }

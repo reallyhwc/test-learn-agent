@@ -18,8 +18,8 @@ public class FinanceService {
         this.dataStore = dataStore;
     }
 
-    public List<Account> listAccounts() {
-        return dataStore.findAllAccounts();
+    public List<Account> listAccounts(String userId) {
+        return dataStore.findAllAccountsByUserId(userId);
     }
 
     public Account createAccount(Account account) {
@@ -37,13 +37,13 @@ public class FinanceService {
         return dataStore.findAccountById(accountId).map(Account::getBalance);
     }
 
-    public List<Transaction> listTransactions(Long accountId, LocalDate date,
+    public List<Transaction> listTransactions(String userId, Long accountId, LocalDate date,
                                                String category, String type) {
         TransactionType tt = null;
         if (type != null && !type.isBlank()) {
             tt = TransactionType.valueOf(type.toUpperCase());
         }
-        return dataStore.findTransactions(accountId, date, category, tt);
+        return dataStore.findTransactions(accountId, date, category, tt, userId);
     }
 
     public Transaction createTransaction(Transaction transaction) {

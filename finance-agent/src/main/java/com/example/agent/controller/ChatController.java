@@ -27,24 +27,38 @@ public class ChatController {
                     provider.getToolCallbacks().length);
         }
         this.chatClient = chatClientBuilder
-                .defaultSystem("""
-                    你是一个个人财务助手。你可以帮助用户查询账户余额、交易记录，
-                    以及添加交易。请用中文回复，简洁明了。
-                    金额单位是人民币元。
-                    """)
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
     }
 
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) {
-        log.info("Chat request: {}", request.getMessage());
+        log.info("Chat request from userId={}: {}", request.getUserId(), request.getMessage());
+
+        String userId = request.getUserId() != null ? request.getUserId() : "default";
+        String systemPrompt = buildSystemPrompt(userId);
 
         String reply = chatClient.prompt()
+                .system(systemPrompt)
                 .user(request.getMessage())
                 .call()
                 .content();
 
         return new ChatResponse(reply);
+    }
+
+    private String buildSystemPrompt(String userId) {
+        return """
+                你是一个个人财务助手，名字叫"小财"。你可以帮助用户查询账户余额、交易记录，
+                以及添加交易。请用中文回复，简洁明了。金额单位是人民币元。
+
+                重要信息：
+                - 当前用户ID是: %s
+                - 当前日期是: %s
+
+                注意事项：
+                - 调用任何工具时，务必将 userId 参数传递为 "%s"
+                - 查询账户或交易时，总是使用这个 userId，确保只看到当前用户的数据
+                """.formatted(userId, java.time.LocalDate.now(), userId);
     }
 }

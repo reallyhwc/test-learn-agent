@@ -15,7 +15,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { userStore } from '../stores/userStore.js'
 
 const accounts = ref([])
 const loading = ref(true)
@@ -24,14 +25,18 @@ const API_BASE = 'http://localhost:8080'
 
 const typeLabel = (t) => ({ CASH: '现金', BANK: '储蓄', CARD: '信用' }[t] || t)
 
-onMounted(async () => {
+async function fetchAccounts() {
+  loading.value = true
   try {
-    const res = await fetch(`${API_BASE}/api/accounts`)
+    const res = await fetch(`${API_BASE}/api/accounts?userId=${userStore.currentUser}`)
     accounts.value = await res.json()
   } finally {
     loading.value = false
   }
-})
+}
+
+onMounted(fetchAccounts)
+watch(() => userStore.currentUser, fetchAccounts)
 </script>
 
 <style scoped>

@@ -27,7 +27,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
+import { userStore } from '../stores/userStore.js'
 
 const API_BASE = 'http://localhost:8080'
 const transactions = ref([])
@@ -37,18 +38,16 @@ const filterDate = ref('')
 const filterCategory = ref('')
 
 onMounted(async () => {
-  const [txRes, cRes] = await Promise.all([
-    fetch(`${API_BASE}/api/transactions`),
-    fetch(`${API_BASE}/api/categories`)
-  ])
-  transactions.value = await txRes.json()
+  const cRes = await fetch(`${API_BASE}/api/categories`)
   categories.value = await cRes.json()
-  loading.value = false
+  await fetchList()
 })
+
+watch(() => userStore.currentUser, fetchList)
 
 async function fetchList() {
   loading.value = true
-  let url = `${API_BASE}/api/transactions?`
+  let url = `${API_BASE}/api/transactions?userId=${userStore.currentUser}&`
   if (filterDate.value) url += `date=${filterDate.value}&`
   if (filterCategory.value) url += `category=${filterCategory.value}&`
   const res = await fetch(url)

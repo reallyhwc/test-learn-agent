@@ -19,8 +19,8 @@ public class AccountController {
     }
 
     @GetMapping
-    public List<Account> listAccounts() {
-        return financeService.listAccounts();
+    public List<Account> listAccounts(@RequestParam(required = false, defaultValue = "default") String userId) {
+        return financeService.listAccounts(userId);
     }
 
     @PostMapping
