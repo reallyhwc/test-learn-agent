@@ -2,13 +2,15 @@ server:
   port: 8081
 
 spring:
+  config:
+    import: optional:file:../.env
   ai:
     openai:
-      api-key: ${DEEPSEEK_API_KEY:your-api-key-here}
-      base-url: https://api.deepseek.com
+      api-key: ${LLM_API_KEY}
+      base-url: ${LLM_BASE_URL}
       chat:
         options:
-          model: deepseek-chat
+          model: ${LLM_MODEL}
     mcp:
       client:
         type: SYNC
