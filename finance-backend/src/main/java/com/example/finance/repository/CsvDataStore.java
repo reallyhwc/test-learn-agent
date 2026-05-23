@@ -1,6 +1,11 @@
 package com.example.finance.repository;
 
 import com.example.finance.model.*;
+import com.fasterxml.jackson.databind.MappingIterator;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.dataformat.csv.CsvMapper;
+import com.fasterxml.jackson.dataformat.csv.CsvSchema;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
@@ -24,6 +29,34 @@ public class CsvDataStore {
     private final AtomicLong accountIdGen = new AtomicLong(1);
     private final AtomicLong transactionIdGen = new AtomicLong(1);
     private final AtomicLong categoryIdGen = new AtomicLong(1);
+
+    private final CsvMapper csvMapper = CsvMapper.builder()
+            .addModule(new JavaTimeModule())
+            .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+            .build();
+
+    private static final CsvSchema ACCOUNT_SCHEMA = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("name")
+            .addColumn("type")
+            .addColumn("balance")
+            .build().withHeader();
+
+    private static final CsvSchema TRANSACTION_SCHEMA = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("accountId")
+            .addColumn("type")
+            .addColumn("amount")
+            .addColumn("category")
+            .addColumn("note")
+            .addColumn("date")
+            .build().withHeader();
+
+    private static final CsvSchema CATEGORY_SCHEMA = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("name")
+            .addColumn("type")
+            .build().withHeader();
 
     @PostConstruct
     public void init() {
@@ -85,8 +118,10 @@ public class CsvDataStore {
                 account.setBalance(account.getBalance().add(delta));
                 persistAccounts();
             });
+            persistTransactions();
+        } else {
+            throw new UnsupportedOperationException("Updating existing transactions is not supported");
         }
-        persistTransactions();
     }
 
     // ---- Category operations ----
@@ -97,93 +132,55 @@ public class CsvDataStore {
 
     // ---- CSV persistence helpers ----
 
+    private <T> List<T> loadFromCsv(String filename, Class<T> clazz, CsvSchema schema) {
+        File file = new File(dataDir, filename);
+        if (!file.exists()) return new ArrayList<>();
+        try {
+            MappingIterator<T> it = csvMapper.readerFor(clazz).with(schema).readValues(file);
+            return it.readAll();
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to load CSV: " + filename, e);
+        }
+    }
+
+    private <T> void persistToCsv(String filename, List<T> items, CsvSchema schema) {
+        try {
+            csvMapper.writer(schema).writeValue(new File(dataDir, filename), items);
+        } catch (IOException e) {
+            throw new RuntimeException("Failed to persist CSV: " + filename, e);
+        }
+    }
+
     private void loadAccounts() {
-        File file = new File(dataDir, "accounts.csv");
-        if (!file.exists()) {
+        List<Account> loaded = loadFromCsv("accounts.csv", Account.class, ACCOUNT_SCHEMA);
+        if (loaded.isEmpty()) {
             saveAccount(new Account(null, "默认现金账户", AccountType.CASH, BigDecimal.ZERO));
             return;
         }
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            reader.readLine(); // skip header
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] parts = line.split(",", -1);
-                Account account = new Account(
-                        Long.parseLong(parts[0]),
-                        parts[1],
-                        AccountType.valueOf(parts[2]),
-                        new BigDecimal(parts[3])
-                );
-                accounts.add(account);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load accounts.csv", e);
-        }
+        accounts.addAll(loaded);
         accounts.stream().mapToLong(Account::getId).max()
                 .ifPresent(max -> accountIdGen.set(max + 1));
     }
 
     private void persistAccounts() {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(dataDir, "accounts.csv")))) {
-            writer.write("id,name,type,balance");
-            writer.newLine();
-            for (Account a : accounts) {
-                writer.write(a.getId() + "," + a.getName() + ","
-                        + a.getType().name() + "," + a.getBalance().toString());
-                writer.newLine();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to persist accounts.csv", e);
-        }
+        persistToCsv("accounts.csv", accounts, ACCOUNT_SCHEMA);
     }
 
     private void loadTransactions() {
-        File file = new File(dataDir, "transactions.csv");
-        if (!file.exists()) return;
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            reader.readLine(); // skip header
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] parts = line.split(",", -1);
-                Transaction tx = new Transaction(
-                        Long.parseLong(parts[0]),
-                        Long.parseLong(parts[1]),
-                        TransactionType.valueOf(parts[2]),
-                        new BigDecimal(parts[3]),
-                        parts[4],
-                        parts[5],
-                        LocalDate.parse(parts[6])
-                );
-                transactions.add(tx);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load transactions.csv", e);
-        }
+        List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA);
+        if (loaded.isEmpty()) return;
+        transactions.addAll(loaded);
         transactions.stream().mapToLong(Transaction::getId).max()
                 .ifPresent(max -> transactionIdGen.set(max + 1));
     }
 
     private void persistTransactions() {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(dataDir, "transactions.csv")))) {
-            writer.write("id,accountId,type,amount,category,note,date");
-            writer.newLine();
-            for (Transaction t : transactions) {
-                writer.write(t.getId() + "," + t.getAccountId() + ","
-                        + t.getType().name() + "," + t.getAmount().toString() + ","
-                        + t.getCategory() + "," + (t.getNote() != null ? t.getNote() : "") + ","
-                        + t.getDate().toString());
-                writer.newLine();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to persist transactions.csv", e);
-        }
+        persistToCsv("transactions.csv", transactions, TRANSACTION_SCHEMA);
     }
 
     private void loadCategories() {
-        File file = new File(dataDir, "categories.csv");
-        if (!file.exists()) {
+        List<Category> loaded = loadFromCsv("categories.csv", Category.class, CATEGORY_SCHEMA);
+        if (loaded.isEmpty()) {
             saveCategory(new Category(null, "工资", TransactionType.INCOME));
             saveCategory(new Category(null, "兼职", TransactionType.INCOME));
             saveCategory(new Category(null, "理财", TransactionType.INCOME));
@@ -196,22 +193,7 @@ public class CsvDataStore {
             saveCategory(new Category(null, "其他", TransactionType.EXPENSE));
             return;
         }
-        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-            reader.readLine(); // skip header
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) continue;
-                String[] parts = line.split(",", -1);
-                Category category = new Category(
-                        Long.parseLong(parts[0]),
-                        parts[1],
-                        TransactionType.valueOf(parts[2])
-                );
-                categories.add(category);
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to load categories.csv", e);
-        }
+        categories.addAll(loaded);
         categories.stream().mapToLong(Category::getId).max()
                 .ifPresent(max -> categoryIdGen.set(max + 1));
     }
@@ -221,22 +203,6 @@ public class CsvDataStore {
             category.setId(categoryIdGen.getAndIncrement());
             categories.add(category);
         }
-        persistToCsv("categories.csv", categories);
-    }
-
-    private <T> void persistToCsv(String filename, List<T> items) {
-        try (BufferedWriter writer = new BufferedWriter(new FileWriter(new File(dataDir, filename)))) {
-            if (filename.equals("categories.csv")) {
-                writer.write("id,name,type");
-                writer.newLine();
-                for (T item : items) {
-                    Category c = (Category) item;
-                    writer.write(c.getId() + "," + c.getName() + "," + c.getType().name());
-                    writer.newLine();
-                }
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to persist " + filename, e);
-        }
+        persistToCsv("categories.csv", categories, CATEGORY_SCHEMA);
     }
 }
