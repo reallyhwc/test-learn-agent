@@ -27,7 +27,19 @@
         :disabled="thinking"
         clearable
       />
-      <el-button type="primary" @click="send" :disabled="thinking" style="margin-left: 8px">发送</el-button>
+      <el-button
+        v-if="!thinking"
+        type="primary"
+        @click="send"
+        style="margin-left: 8px"
+      >发送</el-button>
+      <el-button
+        v-else
+        type="danger"
+        plain
+        @click="abort"
+        style="margin-left: 8px"
+      >⏹ 停止</el-button>
     </div>
   </div>
 </template>
@@ -44,6 +56,8 @@ const thinking = ref(false)
 const msgContainer = ref(null)
 const memoryCount = ref(0)
 
+let activeController = null
+
 let scrollFrame = null
 function scheduleScrollToBottom() {
   if (scrollFrame) return
@@ -58,6 +72,7 @@ function scheduleScrollToBottom() {
 watch(
   () => userStore.currentUser,
   () => {
+    if (activeController) activeController.abort()
     messages.value = []
     memoryCount.value = 0
     thinking.value = false
@@ -68,11 +83,19 @@ watch(() => messages.value.length, scheduleScrollToBottom)
 
 onUnmounted(() => {
   if (scrollFrame) cancelAnimationFrame(scrollFrame)
+  if (activeController) activeController.abort()
 })
 
 let nextMsgId = 1
 function newId(role) {
   return `${role}-${Date.now()}-${nextMsgId++}`
+}
+
+function abort() {
+  if (activeController) {
+    activeController.abort()
+    activeController = null
+  }
 }
 
 async function send() {
@@ -91,11 +114,15 @@ async function send() {
   let firstToken = false
   const buf = createStreamBuffer()
 
+  const controller = new AbortController()
+  activeController = controller
+
   try {
     const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, userId: userStore.currentUser }),
+      signal: controller.signal,
     })
 
     const reader = res.body.getReader()
@@ -129,14 +156,22 @@ async function send() {
 
     console.timeEnd('[Agent] 总耗时')
     messages.value[assistantIdx].streaming = false
-    memoryCount.value = messages.value.filter((m) => m.role === 'user').length * 2
   } catch (e) {
-    console.error('[Agent] Error:', e)
-    if (!messages.value[assistantIdx].text) {
-      messages.value[assistantIdx].text = '抱歉，服务暂时不可用'
+    if (e.name === 'AbortError') {
+      console.log('[Agent] 用户中止')
+      messages.value[assistantIdx].text =
+        (messages.value[assistantIdx].text || '') +
+        (messages.value[assistantIdx].text ? '\n\n' : '') +
+        '⏹ 已停止'
+    } else {
+      console.error('[Agent] Error:', e)
+      if (!messages.value[assistantIdx].text) {
+        messages.value[assistantIdx].text = '抱歉，服务暂时不可用'
+      }
     }
     messages.value[assistantIdx].streaming = false
   } finally {
+    activeController = null
     thinking.value = false
   }
 }
