@@ -26,73 +26,119 @@ const bubbleRef = ref(null)
 let chartIdCounter = 0
 const chartConfigs = new Map()
 
-function extractChartBlocks(text) {
-  // 匹配 ```chart:bar / ```chart:pie / ```chart:line 代码块
-  // LLM 天然尊重代码块边界，不会压缩内部换行
-  const regex = /```chart:(bar|pie|line)\s*\n([\s\S]*?)```/g
-  const fragments = []
-  let lastIndex = 0
-
-  for (const m of text.matchAll(regex)) {
-    // 代码块之前的文本
-    if (m.index > lastIndex) {
-      fragments.push({ type: 'text', content: text.slice(lastIndex, m.index) })
-    }
-
-    const chartType = m[1]
-    const body = m[2].trim()
-    const lines = body.split('\n').filter(l => l.trim())
-    if (lines.length >= 2) {
-      const title = lines[0].trim()
-      const headers = lines[1].split(',').map(h => h.trim().replace(/（[^）]*）/g, ''))
-      const rows = lines.slice(2).map(l => {
-        const cells = l.split(',').map(c => c.trim())
-        return cells.map((c, i) => {
-          if (i === 0) return c
-          const num = parseFloat(c.replace(/[^0-9.]/g, ''))
-          return isNaN(num) ? '0' : String(num)
-        })
-      })
-
-      const id = 'chart-' + (chartIdCounter++)
-      chartConfigs.set(id, { type: chartType, title, headers, rows })
-      fragments.push({ type: 'chart', id })
-    } else {
-      // 数据不足，保留原文
-      fragments.push({ type: 'text', content: m[0] })
-    }
-
-    lastIndex = m.index + m[0].length
-  }
-
-  // 剩余文本
-  if (lastIndex < text.length) {
-    fragments.push({ type: 'text', content: text.slice(lastIndex) })
-  }
-
-  return fragments
-}
-
 const rendered = computed(() => {
   if (props.role !== 'assistant') return props.text
   chartConfigs.clear()
   chartIdCounter = 0
-
-  const fragments = extractChartBlocks(props.text || '')
-  return fragments.map(f => {
-    if (f.type === 'chart') {
-      return `<div class="chart-container" data-chart-id="${f.id}"></div>`
-    }
-    return marked.parse(f.content)
-  }).join('')
+  return marked.parse(props.text || '')
 })
+
+function isNumeric(val) {
+  return !isNaN(parseFloat(val.replace(/[¥,%,\s]/g, '')))
+}
+
+function extractTableData(table) {
+  const headers = []
+  const thead = table.querySelector('thead')
+  if (thead) {
+    thead.querySelectorAll('th').forEach(th => headers.push(th.textContent.trim()))
+  } else {
+    const firstRow = table.querySelector('tr')
+    if (firstRow) firstRow.querySelectorAll('td,th').forEach(c => headers.push(c.textContent.trim()))
+  }
+  if (headers.length < 2) return null
+
+  const rows = []
+  const tbody = table.querySelector('tbody') || table
+  tbody.querySelectorAll('tr').forEach(tr => {
+    const cells = [...tr.querySelectorAll('td,th')].map(c => c.textContent.trim())
+    if (cells.length >= 2) rows.push(cells)
+  })
+  if (rows.length === 0) return null
+
+  // 找数值列（第二列开始）
+  const numCols = []
+  for (let i = 1; i < headers.length; i++) {
+    const sample = rows.slice(0, 3).filter(r => r[i]).map(r => r[i])
+    if (sample.length > 0 && sample.every(isNumeric)) {
+      numCols.push(i)
+    }
+  }
+  if (numCols.length === 0) return null
+
+  // 清洗：标签列保留原文，数值列 parseFloat
+  const cleanRows = rows.map(r => {
+    return r.map((c, i) => {
+      if (i === 0) return c
+      if (numCols.includes(i)) {
+        const n = parseFloat(c.replace(/[¥,%,\s]/g, ''))
+        return isNaN(n) ? '0' : String(n)
+      }
+      return c
+    })
+  }).filter(r => r.length >= 2)
+
+  if (cleanRows.length === 0) return null
+
+  // 判别图表类型：2 列 + ≤8 行 → pie，否则 bar
+  const hasMultipleNumericCols = numCols.length > 1
+  return {
+    headers: headers.filter((_, i) => i === 0 || numCols.includes(i)),
+    rows: cleanRows.map(r => r.filter((_, i) => i === 0 || numCols.includes(i))),
+    chartType: hasMultipleNumericCols ? 'bar' : (cleanRows.length <= 8 ? 'pie' : 'bar')
+  }
+}
 
 function mountCharts() {
   if (!bubbleRef.value) return
-  const containers = bubbleRef.value.querySelectorAll('.chart-container')
-  containers.forEach(el => {
-    const id = el.dataset.chartId
-    const config = chartConfigs.get(id)
+  const tables = bubbleRef.value.querySelectorAll('table')
+  tables.forEach(table => {
+    if (table.dataset.chartMounted) return
+    table.dataset.chartMounted = '1'
+
+    const data = extractTableData(table)
+    if (!data) return
+
+    const wrapper = document.createElement('div')
+    wrapper.className = 'chart-wrapper'
+    const chartDiv = document.createElement('div')
+    chartDiv.className = 'chart-container'
+    wrapper.appendChild(chartDiv)
+
+    const toggle = document.createElement('div')
+    toggle.className = 'chart-toggle'
+    toggle.textContent = '📊 图表'
+    toggle.onclick = () => {
+      if (chartDiv.style.display === 'none') {
+        chartDiv.style.display = ''
+        table.style.display = ''
+        toggle.textContent = '📋 表格'
+      } else {
+        chartDiv.style.display = 'none'
+        table.style.display = 'none'
+        toggle.textContent = '📊 图表'
+      }
+    }
+    wrapper.appendChild(toggle)
+
+    table.parentNode.insertBefore(wrapper, table)
+
+    const id = 'chart-' + (chartIdCounter++)
+    chartConfigs.set(id, {
+      type: data.chartType,
+      title: '',
+      headers: data.headers,
+      rows: data.rows
+    })
+    chartDiv.dataset.chartId = id
+  })
+
+  // 挂载 ChartRenderer
+  document.querySelectorAll('.chart-container').forEach(el => {
+    const cid = el.dataset.chartId
+    if (!cid || el.dataset.mounted) return
+    el.dataset.mounted = '1'
+    const config = chartConfigs.get(cid)
     if (!config) return
     try {
       createApp(ChartRenderer, {
@@ -103,7 +149,6 @@ function mountCharts() {
       }).mount(el)
     } catch (e) {
       console.error('[ChartRenderer] Mount failed:', e)
-      el.innerHTML = '<div class="chart-error">图表加载失败</div>'
     }
   })
 }
@@ -186,6 +231,15 @@ async function submitFeedback(rating) {
   margin: 8px 0; background: #f5f7fa; border-radius: 0 6px 6px 0; color: #606266;
 }
 .markdown-body :deep(hr) { border: none; border-top: 1px solid #ebeef5; margin: 12px 0; }
+
+/* 图表相关样式 */
+.chart-wrapper { margin: 12px 0; }
+.chart-container { margin-bottom: 8px; }
+.chart-toggle {
+  display: inline-block; font-size: 0.8rem; color: var(--el-color-primary);
+  cursor: pointer; user-select: none; padding: 2px 6px; border-radius: 4px;
+}
+.chart-toggle:hover { background: var(--el-color-primary-light-9); }
 
 .feedback-actions { margin-top: 4px; text-align: right; }
 .feedback-btn { cursor: pointer; margin-left: 8px; opacity: 0.4; font-size: 0.85rem; user-select: none; }
