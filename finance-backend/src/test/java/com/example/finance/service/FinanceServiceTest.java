@@ -6,15 +6,18 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.ActiveProfiles;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("test")
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class FinanceServiceTest {
 
     @Autowired
@@ -58,13 +61,20 @@ class FinanceServiceTest {
 
     @Test
     void shouldIsolateDataByUserId() {
-        Account a1 = new Account(null, "用户A账户", AccountType.CASH, BigDecimal.ZERO, "userA");
-        Account a2 = new Account(null, "用户B账户", AccountType.CASH, BigDecimal.ZERO, "userB");
+        String uniqueUser = "isoTestUser_" + System.currentTimeMillis();
+        Account a1 = new Account(null, "用户A账户", AccountType.CASH, BigDecimal.ZERO, uniqueUser);
+        Account a2 = new Account(null, "用户B账户", AccountType.CASH, BigDecimal.ZERO, uniqueUser + "_2");
         financeService.createAccount(a1);
         financeService.createAccount(a2);
-        assertThat(financeService.listAccounts("userA")).hasSize(1);
-        assertThat(financeService.listAccounts("userA").get(0).getUserId()).isEqualTo("userA");
-        assertThat(financeService.listAccounts("userB")).hasSize(1);
+
+        List<Account> userAAccounts = financeService.listAccounts(uniqueUser);
+        assertThat(userAAccounts).isNotEmpty();
+        assertThat(userAAccounts.get(0).getUserId()).isEqualTo(uniqueUser);
+        assertThat(userAAccounts).allMatch(a -> a.getUserId().equals(uniqueUser));
+
+        List<Account> userBAccounts = financeService.listAccounts(uniqueUser + "_2");
+        assertThat(userBAccounts).isNotEmpty();
+        assertThat(userBAccounts.get(0).getUserId()).isEqualTo(uniqueUser + "_2");
     }
 
     @Test

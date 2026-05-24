@@ -9,3 +9,7 @@ id,accountId,type,amount,category,note,date,userId
 8,2,EXPENSE,300.00,购物,衣服,2026-05-15,zhangsan
 9,1,EXPENSE,45.00,餐饮,早餐,2026-05-23,default
 10,1,EXPENSE,150.00,娱乐,电影票,2026-05-23,default
+11,1,EXPENSE,100,餐饮,午餐,2026-05-23,default
+12,1,EXPENSE,100,餐饮,午餐,2026-05-23,default
+13,1,EXPENSE,100,餐饮,午餐,2026-05-23,default
+14,1,EXPENSE,100,餐饮,午餐,2026-05-23,default
