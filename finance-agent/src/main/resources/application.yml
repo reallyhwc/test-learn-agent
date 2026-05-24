@@ -2,8 +2,6 @@ server:
   port: 8081
 
 spring:
-  config:
-    import: optional:file:../.env
   ai:
     openai:
       api-key: ${LLM_API_KEY}
