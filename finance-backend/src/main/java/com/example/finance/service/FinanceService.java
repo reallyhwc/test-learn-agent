@@ -3,6 +3,7 @@ package com.example.finance.service;
 import com.example.finance.dto.PageResult;
 import com.example.finance.model.*;
 import com.example.finance.repository.CsvDataStore;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
@@ -10,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 
+@Slf4j
 @Service
 public class FinanceService {
 
@@ -57,6 +59,7 @@ public class FinanceService {
     }
 
     public Transaction createTransaction(Transaction transaction) {
+        log.info("创建交易: userId={} type={} amount={} category={}", transaction.getUserId(), transaction.getType(), transaction.getAmount(), transaction.getCategory());
         dataStore.saveTransaction(transaction);
         return transaction;
     }

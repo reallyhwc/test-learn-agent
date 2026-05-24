@@ -8,6 +8,7 @@ import com.fasterxml.jackson.dataformat.csv.CsvMapper;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.annotation.PostConstruct;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
@@ -18,6 +19,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Component
 public class CsvDataStore {
 
@@ -80,6 +82,7 @@ public class CsvDataStore {
 
     @PostConstruct
     public void init() {
+        log.info("初始化 CsvDataStore，数据目录: {}", dataDir);
         new File(dataDir).mkdirs();
         loadCategories();
         loadAccounts();
@@ -188,6 +191,7 @@ public class CsvDataStore {
             MappingIterator<T> it = csvMapper.readerFor(clazz).with(schema).readValues(file);
             return it.readAll();
         } catch (IOException e) {
+            log.error("加载 CSV 文件失败: {}", filename, e);
             throw new RuntimeException("Failed to load CSV: " + filename, e);
         }
     }
@@ -196,6 +200,7 @@ public class CsvDataStore {
         try {
             csvMapper.writer(schema).writeValue(new File(dataDir, filename), items);
         } catch (IOException e) {
+            log.error("持久化 CSV 文件失败: {}", filename, e);
             throw new RuntimeException("Failed to persist CSV: " + filename, e);
         }
     }
