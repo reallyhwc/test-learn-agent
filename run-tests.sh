@@ -65,6 +65,11 @@ if [[ "$LAYER" == "all" || "$LAYER" == "agent" ]]; then
             echo -e "${YELLOW}[跳过] 未找到 .env 文件，跳过 AI 测试${NC}"
             ((skip_count++)) || true
         else
+            # 导出 .env 中的环境变量，供 Spring Boot 使用
+            set -a
+            source "$SCRIPT_DIR/.env"
+            set +a
+
             cd "$SCRIPT_DIR/finance-agent"
 
             for i in $(seq 1 $RETRY_COUNT); do

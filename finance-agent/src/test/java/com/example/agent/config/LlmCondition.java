@@ -12,6 +12,13 @@ public class LlmCondition implements ExecutionCondition {
     private static final boolean LLM_AVAILABLE = checkLlmAvailability();
 
     private static boolean checkLlmAvailability() {
+        // 先检查环境变量
+        String envApiKey = System.getenv("LLM_API_KEY");
+        if (envApiKey != null && !envApiKey.isBlank() && !envApiKey.equals("your-api-key-here")) {
+            System.out.println("[LlmCondition] LLM API key found in environment, enabling AI tests");
+            return true;
+        }
+        // 再检查 .env 文件
         String[] paths = {"../.env", ".env"};
         for (String path : paths) {
             try (FileInputStream in = new FileInputStream(path)) {
@@ -19,7 +26,7 @@ public class LlmCondition implements ExecutionCondition {
                 props.load(in);
                 String apiKey = props.getProperty("LLM_API_KEY", "").trim();
                 if (!apiKey.isEmpty() && !apiKey.equals("your-api-key-here")) {
-                    System.out.println("[LlmCondition] LLM API key found, enabling AI tests");
+                    System.out.println("[LlmCondition] LLM API key found in .env, enabling AI tests (需要 export 环境变量)");
                     return true;
                 }
             } catch (Exception ignored) {
