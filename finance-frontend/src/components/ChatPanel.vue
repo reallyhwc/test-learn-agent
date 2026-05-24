@@ -5,21 +5,38 @@
       <span class="memory-info" v-if="memoryCount > 0">记忆: {{ memoryCount }}/20 条</span>
     </div>
     <div class="chat-messages" ref="msgContainer">
-      <ChatMessage v-for="(m, i) in messages" :key="i" :role="m.role" :text="m.text" :id="m.id" />
+      <ChatMessage
+        v-for="m in messages"
+        :key="m.id"
+        :role="m.role"
+        :text="m.text"
+        :id="m.id"
+        :streaming="m.streaming"
+      />
       <div v-if="thinking && !messages.length" class="thinking">思考中...</div>
-      <div v-if="thinking && messages.length && messages[messages.length-1].role === 'assistant'" class="streaming-dot"></div>
+      <div
+        v-if="thinking && messages.length && messages[messages.length-1].role === 'assistant' && messages[messages.length-1].streaming"
+        class="streaming-dot"
+      ></div>
     </div>
     <div class="chat-input">
-      <el-input v-model="input" @keyup.enter="send" placeholder="比如：我的余额是多少？" :disabled="thinking" clearable />
+      <el-input
+        v-model="input"
+        @keyup.enter="send"
+        placeholder="比如：我的余额是多少？"
+        :disabled="thinking"
+        clearable
+      />
       <el-button type="primary" @click="send" :disabled="thinking" style="margin-left: 8px">发送</el-button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, nextTick, watch } from 'vue'
+import { ref, watch, onUnmounted } from 'vue'
 import ChatMessage from './ChatMessage.vue'
 import { userStore } from '../stores/userStore.js'
+import { createStreamBuffer } from '../utils/streamParser.js'
 
 const messages = ref([])
 const input = ref('')
@@ -27,78 +44,90 @@ const thinking = ref(false)
 const msgContainer = ref(null)
 const memoryCount = ref(0)
 
-// 切换用户时清空对话
-watch(() => userStore.currentUser, () => {
-  messages.value = []
-  memoryCount.value = 0
-  thinking.value = false
-})
-
-// Auto-scroll to bottom when messages change
-watch(() => messages.value.length, () => {
-  nextTick(() => {
+let scrollFrame = null
+function scheduleScrollToBottom() {
+  if (scrollFrame) return
+  scrollFrame = requestAnimationFrame(() => {
+    scrollFrame = null
     if (msgContainer.value) {
       msgContainer.value.scrollTop = msgContainer.value.scrollHeight
     }
   })
+}
+
+watch(
+  () => userStore.currentUser,
+  () => {
+    messages.value = []
+    memoryCount.value = 0
+    thinking.value = false
+  },
+)
+
+watch(() => messages.value.length, scheduleScrollToBottom)
+
+onUnmounted(() => {
+  if (scrollFrame) cancelAnimationFrame(scrollFrame)
 })
+
+let nextMsgId = 1
+function newId(role) {
+  return `${role}-${Date.now()}-${nextMsgId++}`
+}
 
 async function send() {
   if (!input.value.trim() || thinking.value) return
   const text = input.value
   console.time('[Agent] 总耗时')
   input.value = ''
-  messages.value.push({ role: 'user', text })
-  const assistantIdx = messages.value.length
-  messages.value.push({ role: 'assistant', text: '', id: 'msg-' + Date.now() })
+
+  messages.value.push({ id: newId('user'), role: 'user', text, streaming: false })
+  const assistantMsg = { id: newId('assistant'), role: 'assistant', text: '', streaming: true }
+  messages.value.push(assistantMsg)
+  const assistantIdx = messages.value.length - 1
+
   thinking.value = true
   const requestStart = performance.now()
   let firstToken = false
+  const buf = createStreamBuffer()
 
   try {
-    const res = await fetch(`/api/chat/stream`, {
+    const res = await fetch('/api/chat/stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: text, userId: userStore.currentUser })
+      body: JSON.stringify({ message: text, userId: userStore.currentUser }),
     })
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
-    let buffer = ''
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      buffer += decoder.decode(value, { stream: true })
+      const chunk = decoder.decode(value, { stream: true })
+      const tokens = buf.feed(chunk)
+      if (tokens.length === 0) continue
 
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const payload = line.slice(5)
-          const content = payload.startsWith(' ') ? payload.slice(1) : payload
-          if (!firstToken) {
-            firstToken = true
-            const ttft = performance.now() - requestStart
-            console.log('[Agent] TTFT:', Math.round(ttft) + 'ms')
-          }
-          for (const ch of content) {
-            messages.value[assistantIdx].text += ch
-            if (msgContainer.value) {
-              msgContainer.value.scrollTop = msgContainer.value.scrollHeight
-            }
-            await new Promise(r => setTimeout(r, 20))
-          }
-        }
+      if (!firstToken) {
+        firstToken = true
+        const ttft = performance.now() - requestStart
+        console.log('[Agent] TTFT:', Math.round(ttft) + 'ms')
       }
+
+      const appended = tokens.join('')
+      messages.value[assistantIdx].text += appended
+      scheduleScrollToBottom()
     }
+
     console.timeEnd('[Agent] 总耗时')
-    memoryCount.value = messages.value.filter(m => m.role === 'user').length * 2
+    messages.value[assistantIdx].streaming = false
+    memoryCount.value = messages.value.filter((m) => m.role === 'user').length * 2
   } catch (e) {
     console.error('[Agent] Error:', e)
-    if (!messages.value[assistantIdx]?.text) {
+    if (!messages.value[assistantIdx].text) {
       messages.value[assistantIdx].text = '抱歉，服务暂时不可用'
     }
+    messages.value[assistantIdx].streaming = false
   } finally {
     thinking.value = false
   }
