@@ -105,8 +105,8 @@ async function send() {
       const { done, value } = await reader.read()
       if (done) break
       const chunk = decoder.decode(value, { stream: true })
-      const tokens = buf.feed(chunk)
-      if (tokens.length === 0) continue
+      const events = buf.feed(chunk)
+      if (events.length === 0) continue
 
       if (!firstToken) {
         firstToken = true
@@ -114,8 +114,16 @@ async function send() {
         console.log('[Agent] TTFT:', Math.round(ttft) + 'ms')
       }
 
-      const appended = tokens.join('')
-      messages.value[assistantIdx].text += appended
+      for (const evt of events) {
+        if (evt.type === 'error') {
+          messages.value[assistantIdx].text =
+            (messages.value[assistantIdx].text || '') +
+            (messages.value[assistantIdx].text ? '\n\n' : '') +
+            `⚠️ ${evt.payload}`
+        } else {
+          messages.value[assistantIdx].text += evt.payload
+        }
+      }
       scheduleScrollToBottom()
     }
 
