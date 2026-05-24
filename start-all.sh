@@ -28,6 +28,25 @@ if [ -z "$JAVA_HOME" ]; then
     echo "JAVA_HOME=$JAVA_HOME"
 fi
 
+# 等待服务就绪（替换 sleep）
+wait_for_service() {
+  local name=$1
+  local url=$2
+  local max_attempts=${3:-30}
+  local attempt=0
+  echo "等待 ${name} 就绪..."
+  while [ $attempt -lt $max_attempts ]; do
+    if curl -sf "${url}" > /dev/null 2>&1; then
+      echo "✅ ${name} 已就绪"
+      return 0
+    fi
+    attempt=$((attempt + 1))
+    sleep 1
+  done
+  echo "❌ ${name} 启动超时"
+  return 1
+}
+
 # Check frontend dependencies
 if [ ! -d "finance-frontend/node_modules" ]; then
     echo "[0/4] Installing frontend dependencies..."
@@ -39,21 +58,21 @@ echo "[1/4] Starting finance-backend (:8080)..."
 cd finance-backend && ./mvnw spring-boot:run -q &
 BACKEND_PID=$!
 cd "$SCRIPT_DIR"
-sleep 8
+wait_for_service "Backend" "http://localhost:8080/actuator/health"
 
 # Start MCP Server
 echo "[2/4] Starting finance-mcp-server (:8082)..."
 cd finance-mcp-server && ./mvnw spring-boot:run -q &
 MCP_PID=$!
 cd "$SCRIPT_DIR"
-sleep 5
+wait_for_service "MCP Server" "http://localhost:8082/actuator/health"
 
 # Start Agent
 echo "[3/4] Starting finance-agent (:8081)..."
 cd finance-agent && ./mvnw spring-boot:run -q &
 AGENT_PID=$!
 cd "$SCRIPT_DIR"
-sleep 5
+wait_for_service "Agent" "http://localhost:8081/actuator/health"
 
 # Start Frontend
 echo "[4/4] Starting finance-frontend (:5173)..."

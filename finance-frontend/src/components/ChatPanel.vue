@@ -1,10 +1,10 @@
 <template>
-  <div class="chat-panel">
+  <div class="chat-panel" role="region" aria-label="AI助手对话">
     <div class="chat-header">
       AI 助手
       <span class="memory-info" v-if="memoryCount > 0">记忆: {{ memoryCount }}/20 条</span>
     </div>
-    <div class="chat-messages" ref="msgContainer">
+    <div class="chat-messages" ref="msgContainer" role="log" aria-live="polite">
       <ChatMessage
         v-for="m in messages"
         :key="m.id"
@@ -27,6 +27,7 @@
         placeholder="比如：我的余额是多少？"
         :disabled="thinking"
         clearable
+        aria-label="输入消息"
       />
       <el-button
         v-if="!thinking"
@@ -48,8 +49,13 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue'
 import ChatMessage from './ChatMessage.vue'
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
 import { createStreamBuffer } from '../utils/streamParser.js'
+import { apiGet } from '../utils/api.js'
+
+const userStore = useUserStore()
+
+const MAX_MESSAGES = 100
 
 const messages = ref([])
 const input = ref('')
@@ -94,13 +100,8 @@ function newId(role) {
 
 async function refreshMemoryCount() {
   try {
-    const r = await fetch(
-      `/api/memory/count?userId=${encodeURIComponent(userStore.currentUser)}`,
-    )
-    if (r.ok) {
-      const d = await r.json()
-      memoryCount.value = d.count || 0
-    }
+    const data = await apiGet(`/api/memory/count?userId=${encodeURIComponent(userStore.currentUser)}`)
+    memoryCount.value = data.count || 0
   } catch (_) {
     // 静默失败：UI 计数不准不致命
   }
@@ -128,6 +129,12 @@ async function send() {
     streaming: true,
   }
   messages.value.push(assistantMsg)
+
+  // 防止消息过多导致 DOM 性能下降
+  if (messages.value.length > MAX_MESSAGES) {
+    messages.value = messages.value.slice(-MAX_MESSAGES)
+  }
+
   const assistantIdx = messages.value.length - 1
 
   thinking.value = true
@@ -145,6 +152,19 @@ async function send() {
       body: JSON.stringify({ message: text, userId: userStore.currentUser }),
       signal: controller.signal,
     })
+
+    if (!res.ok) {
+      let errorMsg = '服务暂时不可用'
+      try {
+        const errorData = await res.json()
+        errorMsg = errorData.message || errorMsg
+      } catch (_) {}
+      messages.value[assistantIdx].text = `⚠️ ${errorMsg}`
+      messages.value[assistantIdx].streaming = false
+      thinking.value = false
+      activeController = null
+      return
+    }
 
     const reader = res.body.getReader()
     const decoder = new TextDecoder()
@@ -191,7 +211,9 @@ async function send() {
     } else {
       console.error('[Agent] Error:', e)
       if (!messages.value[assistantIdx].text) {
-        messages.value[assistantIdx].text = '抱歉，服务暂时不可用'
+        messages.value[assistantIdx].text = '⚠️ 连接中断，请点击重新发送'
+      } else {
+        messages.value[assistantIdx].text += '\n\n⚠️ 连接中断'
       }
     }
     messages.value[assistantIdx].streaming = false

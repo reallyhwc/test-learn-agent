@@ -59,6 +59,20 @@ run_maven_test() {
     fi
 }
 
+# ── Layer 0: Frontend ──
+if [[ "$LAYER" == "all" || "$LAYER" == "frontend" ]]; then
+    echo "========== Layer 0: Frontend 测试 =========="
+    cd "$SCRIPT_DIR/finance-frontend"
+    if npm run test 2>&1; then
+        echo -e "${GREEN}[通过] Frontend tests${NC}"
+        ((pass_count++)) || true
+    else
+        echo -e "${RED}[失败] Frontend tests${NC}"
+        ((fail_count++)) || true
+    fi
+    cd "$SCRIPT_DIR"
+fi
+
 # Layer 1-2: Backend + MCP (确定性测试)
 if [[ "$LAYER" == "all" || "$LAYER" == "backend" ]]; then
     echo "========== Layer 1: Backend 测试 =========="

@@ -14,15 +14,31 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Pattern;
 
 @Slf4j
 public class JsonFileChatMemory implements ChatMemory {
     private static final int DEFAULT_MAX_MESSAGES = 20;
+    /** 内存中最多缓存的用户会话数，超过后按 LRU 淘汰最久未访问的会话 */
+    private static final int MAX_CACHED_CONVERSATIONS = 200;
+    /** 仅允许字母、数字、下划线、短横线，防止路径穿越攻击 */
+    private static final Pattern SAFE_ID_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,64}$");
 
-    private final Map<String, List<Message>> store = new ConcurrentHashMap<>();
+    /** LRU 缓存：超过 MAX_CACHED_CONVERSATIONS 时自动淘汰最久未访问的条目，防止 OOM */
+    private final Map<String, List<Message>> store = Collections.synchronizedMap(
+            new LinkedHashMap<>(64, 0.75f, true) {
+                @Override
+                protected boolean removeEldestEntry(Map.Entry<String, List<Message>> eldest) {
+                    boolean shouldRemove = size() > MAX_CACHED_CONVERSATIONS;
+                    if (shouldRemove) {
+                        log.info("LRU 淘汰会话缓存: {}", eldest.getKey());
+                    }
+                    return shouldRemove;
+                }
+            });
     private final ObjectMapper objectMapper;
     private final String dataDir;
     private final int maxMessages;
@@ -42,34 +58,39 @@ public class JsonFileChatMemory implements ChatMemory {
 
     @Override
     public void add(String conversationId, List<Message> messages) {
-        store.computeIfAbsent(conversationId, k -> Collections.synchronizedList(new ArrayList<>()))
-                .addAll(messages);
-        trimAndPersist(conversationId);
+        // 整个 add + trim + persist 在同一个 synchronized 块内完成，防止并发竞态丢消息
+        synchronized (store) {
+            List<Message> list = store.computeIfAbsent(conversationId, k -> new ArrayList<>());
+            list.addAll(messages);
+            trimAndPersist(conversationId, list);
+        }
     }
 
     @Override
     public List<Message> get(String conversationId) {
-        List<Message> cached = store.get(conversationId);
-        if (cached == null) {
-            cached = loadFromFile(conversationId);
-            if (!cached.isEmpty()) {
-                store.put(conversationId, Collections.synchronizedList(new ArrayList<>(cached)));
+        synchronized (store) {
+            List<Message> cached = store.get(conversationId);
+            if (cached == null) {
+                cached = loadFromFile(conversationId);
+                if (!cached.isEmpty()) {
+                    store.put(conversationId, new ArrayList<>(cached));
+                }
             }
+            return cached != null ? new ArrayList<>(cached) : new ArrayList<>();
         }
-        return cached != null ? new ArrayList<>(cached) : List.of();
     }
 
     @Override
     public void clear(String conversationId) {
-        store.remove(conversationId);
+        synchronized (store) {
+            store.remove(conversationId);
+        }
         File file = getFile(conversationId);
         if (file.exists()) file.delete();
     }
 
-    private void trimAndPersist(String conversationId) {
-        List<Message> messages = store.get(conversationId);
-        if (messages == null) return;
-        // Keep only the last maxMessages
+    private void trimAndPersist(String conversationId, List<Message> messages) {
+        // 调用方已持有 store 锁，此处无需再加锁
         while (messages.size() > maxMessages) {
             messages.remove(0);
         }
@@ -77,15 +98,9 @@ public class JsonFileChatMemory implements ChatMemory {
 
         // 更新 Context 监控指标
         if (agentMetrics != null) {
-            List<Message> currentMessages = store.get(conversationId);
-            if (currentMessages != null) {
-                int count;
-                synchronized (currentMessages) {
-                    count = currentMessages.size();
-                }
-                long fileSize = getFile(conversationId).length();
-                agentMetrics.updateMemoryGauge(conversationId, count, fileSize);
-            }
+            int count = messages.size();
+            long fileSize = getFile(conversationId).length();
+            agentMetrics.updateMemoryGauge(conversationId, count, fileSize);
         }
     }
 
@@ -112,12 +127,11 @@ public class JsonFileChatMemory implements ChatMemory {
 
     private void persistToFile(String conversationId, List<Message> messages) {
         try {
+            // 调用方已持有 store 锁，无需再对 messages 加锁
             List<ChatHistoryItem> items = new ArrayList<>();
-            synchronized (messages) {
-                for (Message msg : messages) {
-                    String role = msg instanceof UserMessage ? "USER" : "ASSISTANT";
-                    items.add(new ChatHistoryItem(role, msg.getText()));
-                }
+            for (Message msg : messages) {
+                String role = msg instanceof UserMessage ? "USER" : "ASSISTANT";
+                items.add(new ChatHistoryItem(role, msg.getText()));
             }
             objectMapper.writeValue(getFile(conversationId), items);
         } catch (IOException e) {
@@ -126,6 +140,18 @@ public class JsonFileChatMemory implements ChatMemory {
     }
 
     private File getFile(String conversationId) {
+        validateConversationId(conversationId);
         return new File(dataDir, conversationId + ".json");
+    }
+
+    /**
+     * 校验 conversationId 防止路径穿越攻击。
+     * 仅允许字母、数字、下划线、短横线，长度 1-64。
+     */
+    private void validateConversationId(String conversationId) {
+        if (conversationId == null || !SAFE_ID_PATTERN.matcher(conversationId).matches()) {
+            throw new IllegalArgumentException(
+                    "非法的会话ID，仅允许字母、数字、下划线和短横线: " + conversationId);
+        }
     }
 }

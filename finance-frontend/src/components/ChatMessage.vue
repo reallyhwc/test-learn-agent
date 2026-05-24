@@ -40,7 +40,10 @@ import { renderMarkdown } from '../utils/markdown.js'
 import { extractTableData } from '../utils/chartExtractor.js'
 import { createChartManager } from '../utils/chartManager.js'
 import ChartRenderer from './ChartRenderer.vue'
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
+import { apiPost } from '../utils/api.js'
+
+const userStore = useUserStore()
 
 const props = defineProps({
   role: { type: String, required: true },
@@ -118,17 +121,14 @@ async function submitFeedback(rating) {
   if (feedback.value) return
   feedback.value = rating
   try {
-    await fetch('/api/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        userId: userStore.currentUser,
-        messageId: props.id,
-        rating,
-      }),
+    await apiPost('/api/feedback', {
+      userId: userStore.currentUser,
+      messageId: props.id,
+      rating,
     })
   } catch (e) {
-    console.error('[Agent] Feedback error:', e)
+    console.error('[Feedback] 提交失败:', e)
+    feedback.value = null
   }
 }
 </script>

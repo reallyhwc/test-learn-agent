@@ -1,6 +1,7 @@
 package com.example.agent.controller;
 
 import com.example.agent.dto.FeedbackRequest;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -10,12 +11,15 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.LocalDateTime;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 @Slf4j
 @RestController
 @RequestMapping("/api")
 public class FeedbackController {
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @PostMapping("/feedback")
     public ResponseEntity<Map<String, String>> submitFeedback(@RequestBody FeedbackRequest request) {
@@ -24,12 +28,15 @@ public class FeedbackController {
 
         try {
             new java.io.File("data").mkdirs();
-            String record = String.format(
-                    "{\"timestamp\":\"%s\",\"userId\":\"%s\",\"messageId\":\"%s\",\"rating\":\"%s\"}\n",
-                    LocalDateTime.now().toString(),
-                    request.getUserId(),
-                    request.getMessageId(),
-                    request.getRating());
+
+            // 使用 ObjectMapper 安全序列化，防止 JSON 注入
+            Map<String, String> feedbackRecord = new LinkedHashMap<>();
+            feedbackRecord.put("timestamp", LocalDateTime.now().toString());
+            feedbackRecord.put("userId", request.getUserId());
+            feedbackRecord.put("messageId", request.getMessageId());
+            feedbackRecord.put("rating", request.getRating());
+
+            String record = objectMapper.writeValueAsString(feedbackRecord) + "\n";
             Files.writeString(
                     Path.of("data", "feedback.jsonl"),
                     record,

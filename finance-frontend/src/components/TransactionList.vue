@@ -1,5 +1,5 @@
 <template>
-  <div class="tx-list">
+  <div class="tx-list" role="region" aria-label="交易记录">
     <h3>交易记录</h3>
     <div class="filters">
       <el-date-picker v-model="filterDate" type="date" placeholder="选择日期" size="small" clearable
@@ -9,7 +9,8 @@
         <el-option v-for="c in categories" :key="c.name" :label="c.name" :value="c.name" />
       </el-select>
     </div>
-    <el-table :data="transactions" v-loading="loading" stripe size="small" style="width: 100%">
+    <el-alert v-if="error" :title="error" type="error" show-icon style="margin-bottom: 12px" />
+    <el-table v-if="!error" :data="transactions" v-loading="loading" stripe size="small" style="width: 100%">
       <el-table-column prop="date" label="日期" width="110" />
       <el-table-column prop="category" label="分类" width="80" />
       <el-table-column label="类型" width="70">
@@ -28,6 +29,7 @@
       </el-table-column>
       <el-table-column prop="note" label="备注" />
     </el-table>
+    <el-empty v-if="!loading && !error && transactions.length === 0" description="暂无交易记录" />
     <div class="pagination">
       <el-pagination background layout="prev, pager, next, total" :total="total"
         v-model:page-size="pageSize" v-model:current-page="page" :page-sizes="[10, 20, 50]"
@@ -38,11 +40,15 @@
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
+import { apiGet, handleApiError } from '../utils/api.js'
+
+const userStore = useUserStore()
 
 const transactions = ref([])
 const categories = ref([])
 const loading = ref(true)
+const error = ref(null)
 const filterDate = ref('')
 const filterCategory = ref('')
 const page = ref(1)
@@ -50,8 +56,11 @@ const pageSize = ref(20)
 const total = ref(0)
 
 onMounted(async () => {
-  const cRes = await fetch(`/api/categories`)
-  categories.value = await cRes.json()
+  try {
+    categories.value = await apiGet('/api/categories')
+  } catch (e) {
+    handleApiError(e, '加载分类失败')
+  }
   await fetchList()
 })
 
@@ -59,14 +68,24 @@ watch(() => userStore.currentUser, () => { page.value = 1; fetchList() })
 
 async function fetchList() {
   loading.value = true
-  let url = `/api/transactions?userId=${userStore.currentUser}&page=${page.value}&pageSize=${pageSize.value}&`
-  if (filterDate.value) url += `date=${filterDate.value}&`
-  if (filterCategory.value) url += `category=${filterCategory.value}&`
-  const res = await fetch(url)
-  const data = await res.json()
-  transactions.value = data.items
-  total.value = data.total
-  loading.value = false
+  error.value = null
+  try {
+    const params = new URLSearchParams({
+      userId: userStore.currentUser,
+      page: page.value,
+      pageSize: pageSize.value,
+    })
+    if (filterDate.value) params.set('date', filterDate.value)
+    if (filterCategory.value) params.set('category', filterCategory.value)
+    const data = await apiGet(`/api/transactions?${params}`)
+    transactions.value = data.items
+    total.value = data.total
+  } catch (e) {
+    error.value = e.message
+    handleApiError(e, '加载交易记录失败')
+  } finally {
+    loading.value = false
+  }
 }
 
 defineExpose({ fetchList })

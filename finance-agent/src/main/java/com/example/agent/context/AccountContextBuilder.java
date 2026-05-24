@@ -1,15 +1,18 @@
 package com.example.agent.context;
 
+import com.example.agent.resilience.SimpleCircuitBreaker;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 把当前用户的账户信息摘要后注入 system prompt，
@@ -30,20 +33,41 @@ public class AccountContextBuilder {
     private static final ParameterizedTypeReference<List<Map<String, Object>>> ACCOUNT_LIST_TYPE =
             new ParameterizedTypeReference<>() {};
 
+    private static final long CACHE_TTL_SECONDS = 30;
+    private final ConcurrentHashMap<String, CachedSummary> summaryCache = new ConcurrentHashMap<>();
+
+    private record CachedSummary(String summary, Instant expireAt) {
+        boolean isExpired() { return Instant.now().isAfter(expireAt); }
+    }
+
     private final RestClient backendRestClient;
+    private final SimpleCircuitBreaker circuitBreaker = new SimpleCircuitBreaker("backend-accounts", 3, 30000);
 
     public AccountContextBuilder(RestClient backendRestClient) {
         this.backendRestClient = backendRestClient;
     }
 
     public String buildSummary(String userId) {
+        // 检查缓存
+        CachedSummary cached = summaryCache.get(userId);
+        if (cached != null && !cached.isExpired()) {
+            return cached.summary();
+        }
+        if (!circuitBreaker.isCallPermitted()) {
+            log.warn("后端熔断中，跳过账户上下文拉取 userId={}", userId);
+            return "";
+        }
         try {
             List<Map<String, Object>> accounts = backendRestClient.get()
                     .uri("/api/accounts?userId={u}", userId)
                     .retrieve()
                     .body(ACCOUNT_LIST_TYPE);
-            return formatSummary(accounts);
+            String summary = formatSummary(accounts);
+            summaryCache.put(userId, new CachedSummary(summary, Instant.now().plusSeconds(CACHE_TTL_SECONDS)));
+            circuitBreaker.recordSuccess();
+            return summary;
         } catch (Exception e) {
+            circuitBreaker.recordFailure();
             log.warn("拉取账户上下文失败 userId={}: {}", userId, e.getMessage());
             return "";
         }

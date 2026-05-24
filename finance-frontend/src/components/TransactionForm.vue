@@ -34,7 +34,10 @@
 
 <script setup>
 import { ref, reactive, onMounted, watch } from 'vue'
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
+import { apiGet, apiPost, handleApiError } from '../utils/api.js'
+
+const userStore = useUserStore()
 
 const emit = defineEmits(['saved'])
 const accounts = ref([])
@@ -45,13 +48,19 @@ const msg = ref('')
 const form = reactive({ accountId: '', type: '', amount: null, category: '', note: '' })
 
 async function fetchAccounts() {
-  const res = await fetch(`/api/accounts?userId=${userStore.currentUser}`)
-  accounts.value = await res.json()
+  try {
+    accounts.value = await apiGet(`/api/accounts?userId=${encodeURIComponent(userStore.currentUser)}`)
+  } catch (e) {
+    handleApiError(e, '加载账户失败')
+  }
 }
 
 onMounted(async () => {
-  const cRes = await fetch(`/api/categories`)
-  categories.value = await cRes.json()
+  try {
+    categories.value = await apiGet('/api/categories')
+  } catch (e) {
+    handleApiError(e, '加载分类失败')
+  }
   await fetchAccounts()
 })
 
@@ -62,20 +71,18 @@ async function submit() {
   submitting.value = true
   msg.value = ''
   try {
-    const res = await fetch(`/api/transactions`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        userId: userStore.currentUser,
-        date: new Date().toISOString().split('T')[0]
-      })
+    await apiPost('/api/transactions', {
+      ...form,
+      userId: userStore.currentUser,
+      date: new Date().toISOString().split('T')[0],
     })
-    if (res.ok) {
-      msg.value = '保存成功'
-      form.amount = null; form.note = ''
-      emit('saved')
-    }
+    msg.value = '保存成功'
+    form.amount = null
+    form.note = ''
+    emit('saved')
+  } catch (e) {
+    msg.value = ''
+    handleApiError(e, '保存失败')
   } finally {
     submitting.value = false
   }

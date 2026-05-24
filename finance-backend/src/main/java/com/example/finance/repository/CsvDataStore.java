@@ -16,7 +16,10 @@ import java.io.*;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.locks.ReadWriteLock;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -32,6 +35,10 @@ public class CsvDataStore {
     private final AtomicLong accountIdGen = new AtomicLong(1);
     private final AtomicLong transactionIdGen = new AtomicLong(1);
     private final AtomicLong categoryIdGen = new AtomicLong(1);
+    /** 账户ID到列表索引的映射，加速按ID查找 */
+    private final Map<Long, Integer> accountIdIndex = new ConcurrentHashMap<>();
+    /** 读写锁保护内存数据与 CSV 文件的并发安全 */
+    private final ReadWriteLock dataLock = new ReentrantReadWriteLock();
 
     private final CsvMapper csvMapper = CsvMapper.builder()
             .addModule(new JavaTimeModule())
@@ -89,97 +96,169 @@ public class CsvDataStore {
         loadTransactions();
     }
 
+    // ---- Account index ----
+
+    /** 重建账户ID索引，在初始化或数据变更后调用 */
+    private void rebuildAccountIndex() {
+        accountIdIndex.clear();
+        for (int i = 0; i < accounts.size(); i++) {
+            accountIdIndex.put(accounts.get(i).getId(), i);
+        }
+    }
+
     // ---- Account operations ----
 
     public List<Account> findAllAccounts() {
-        return new ArrayList<>(accounts);
+        dataLock.readLock().lock();
+        try {
+            return new ArrayList<>(accounts);
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
     public List<Account> findAllAccountsByUserId(String userId) {
-        if (userId == null || userId.isBlank()) return findAllAccounts();
-        return accounts.stream()
-                .filter(a -> userId.equals(a.getUserId()))
-                .collect(Collectors.toList());
+        dataLock.readLock().lock();
+        try {
+            if (userId == null || userId.isBlank()) return new ArrayList<>(accounts);
+            return accounts.stream()
+                    .filter(a -> userId.equals(a.getUserId()))
+                    .collect(Collectors.toList());
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
     public Optional<Account> findAccountById(Long id) {
-        return accounts.stream().filter(a -> a.getId().equals(id)).findFirst();
+        dataLock.readLock().lock();
+        try {
+            Integer index = accountIdIndex.get(id);
+            if (index != null && index < accounts.size()) {
+                Account account = accounts.get(index);
+                if (account.getId().equals(id)) {
+                    return Optional.of(account);
+                }
+            }
+            // 索引未命中时回退到遍历
+            return accounts.stream().filter(a -> a.getId().equals(id)).findFirst();
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
     public Account saveAccount(Account account) {
-        if (account.getId() == null) {
-            account.setId(accountIdGen.getAndIncrement());
-            if (account.getUserId() == null) account.setUserId("default");
-            accounts.add(account);
-        } else {
-            for (int i = 0; i < accounts.size(); i++) {
-                if (accounts.get(i).getId().equals(account.getId())) {
-                    accounts.set(i, account);
-                    break;
+        dataLock.writeLock().lock();
+        try {
+            if (account.getId() == null) {
+                account.setId(accountIdGen.getAndIncrement());
+                if (account.getUserId() == null) account.setUserId("default");
+                accounts.add(account);
+                accountIdIndex.put(account.getId(), accounts.size() - 1);
+            } else {
+                for (int i = 0; i < accounts.size(); i++) {
+                    if (accounts.get(i).getId().equals(account.getId())) {
+                        accounts.set(i, account);
+                        break;
+                    }
                 }
             }
+            persistAccounts();
+            return account;
+        } finally {
+            dataLock.writeLock().unlock();
         }
-        persistAccounts();
-        return account;
     }
 
     // ---- Transaction operations ----
 
     public List<Transaction> findAllTransactions() {
-        return new ArrayList<>(transactions);
+        dataLock.readLock().lock();
+        try {
+            return new ArrayList<>(transactions);
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
     public List<Transaction> findTransactions(Long accountId, LocalDate date,
                                                String category, TransactionType type, String userId) {
-        return transactions.stream()
-                .filter(t -> accountId == null || t.getAccountId().equals(accountId))
-                .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
-                .filter(t -> category == null || category.equals(t.getCategory()))
-                .filter(t -> type == null || t.getType() == type)
-                .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
-                .collect(Collectors.toList());
+        dataLock.readLock().lock();
+        try {
+            return transactions.stream()
+                    .filter(t -> accountId == null || t.getAccountId().equals(accountId))
+                    .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
+                    .filter(t -> category == null || category.equals(t.getCategory()))
+                    .filter(t -> type == null || t.getType() == type)
+                    .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
+                    .collect(Collectors.toList());
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
     public PageResult<Transaction> findTransactionsPaginated(Long accountId, LocalDate date,
             String category, TransactionType type, String userId, int page, int pageSize) {
-        List<Transaction> filtered = transactions.stream()
-                .filter(t -> accountId == null || t.getAccountId().equals(accountId))
-                .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
-                .filter(t -> category == null || category.equals(t.getCategory()))
-                .filter(t -> type == null || t.getType() == type)
-                .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
-                .collect(Collectors.toList());
+        dataLock.readLock().lock();
+        try {
+            List<Transaction> filtered = transactions.stream()
+                    .filter(t -> accountId == null || t.getAccountId().equals(accountId))
+                    .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
+                    .filter(t -> category == null || category.equals(t.getCategory()))
+                    .filter(t -> type == null || t.getType() == type)
+                    .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
+                    .collect(Collectors.toList());
 
-        long total = filtered.size();
-        int fromIndex = (page - 1) * pageSize;
-        if (fromIndex >= total) return new PageResult<>(List.of(), page, pageSize, total);
+            long total = filtered.size();
+            int fromIndex = Math.max(0, (page - 1) * pageSize);
+            if (fromIndex >= total) return new PageResult<>(List.of(), page, pageSize, total);
 
-        int toIndex = Math.min(fromIndex + pageSize, (int) total);
-        List<Transaction> pageItems = filtered.subList(fromIndex, toIndex);
-        return new PageResult<>(pageItems, page, pageSize, total);
+            int toIndex = Math.min(fromIndex + pageSize, (int) total);
+            List<Transaction> pageItems = new ArrayList<>(filtered.subList(fromIndex, toIndex));
+            return new PageResult<>(pageItems, page, pageSize, total);
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
+    /**
+     * 保存交易记录，余额更新和持久化在同一个写锁内完成，保证原子性。
+     */
     public void saveTransaction(Transaction transaction) {
-        if (transaction.getId() == null) {
-            transaction.setId(transactionIdGen.getAndIncrement());
-            if (transaction.getUserId() == null) transaction.setUserId("default");
-            transactions.add(transaction);
-            findAccountById(transaction.getAccountId()).ifPresent(account -> {
-                BigDecimal delta = transaction.getType() == TransactionType.INCOME
-                        ? transaction.getAmount() : transaction.getAmount().negate();
-                account.setBalance(account.getBalance().add(delta));
+        dataLock.writeLock().lock();
+        try {
+            if (transaction.getId() == null) {
+                transaction.setId(transactionIdGen.getAndIncrement());
+                if (transaction.getUserId() == null) transaction.setUserId("default");
+                transactions.add(transaction);
+                // 余额更新与持久化在同一个写锁内，保证原子性
+                accounts.stream()
+                        .filter(a -> a.getId().equals(transaction.getAccountId()))
+                        .findFirst()
+                        .ifPresent(account -> {
+                            BigDecimal delta = transaction.getType() == TransactionType.INCOME
+                                    ? transaction.getAmount() : transaction.getAmount().negate();
+                            account.setBalance(account.getBalance().add(delta));
+                        });
+                // 一次性持久化两个文件，减少中间状态窗口
                 persistAccounts();
-            });
-            persistTransactions();
-        } else {
-            throw new UnsupportedOperationException("Updating existing transactions is not supported");
+                persistTransactions();
+            } else {
+                throw new UnsupportedOperationException("不支持更新已有交易");
+            }
+        } finally {
+            dataLock.writeLock().unlock();
         }
     }
 
     // ---- Category operations ----
 
     public List<Category> findAllCategories() {
-        return new ArrayList<>(categories);
+        dataLock.readLock().lock();
+        try {
+            return new ArrayList<>(categories);
+        } finally {
+            dataLock.readLock().unlock();
+        }
     }
 
     // ---- CSV persistence helpers ----
@@ -190,15 +269,31 @@ public class CsvDataStore {
         try {
             MappingIterator<T> it = csvMapper.readerFor(clazz).with(schema).readValues(file);
             return it.readAll();
-        } catch (IOException e) {
-            log.error("加载 CSV 文件失败: {}", filename, e);
-            throw new RuntimeException("Failed to load CSV: " + filename, e);
+        } catch (Exception e) {
+            log.error("加载 CSV 文件失败: {}，将使用空数据启动", filename, e);
+            try {
+                java.nio.file.Path csvPath = file.toPath();
+                java.nio.file.Path backup = csvPath.resolveSibling(csvPath.getFileName() + ".corrupted." + System.currentTimeMillis());
+                java.nio.file.Files.move(csvPath, backup);
+                log.warn("已备份损坏文件到: {}", backup);
+            } catch (Exception backupEx) {
+                log.error("备份损坏文件失败", backupEx);
+            }
+            return new ArrayList<>();
         }
     }
 
     private <T> void persistToCsv(String filename, List<T> items, CsvSchema schema) {
         try {
-            csvMapper.writer(schema).writeValue(new File(dataDir, filename), items);
+            File targetFile = new File(dataDir, filename);
+            File tempFile = new File(dataDir, filename + ".tmp");
+            csvMapper.writer(schema).writeValue(tempFile, items);
+            // 原子重命名，减少数据损坏风险
+            if (!tempFile.renameTo(targetFile)) {
+                // renameTo 失败时回退到直接写入
+                csvMapper.writer(schema).writeValue(targetFile, items);
+                tempFile.delete();
+            }
         } catch (IOException e) {
             log.error("持久化 CSV 文件失败: {}", filename, e);
             throw new RuntimeException("Failed to persist CSV: " + filename, e);
@@ -231,6 +326,7 @@ public class CsvDataStore {
         }
         accounts.stream().mapToLong(Account::getId).max()
                 .ifPresent(max -> accountIdGen.set(max + 1));
+        rebuildAccountIndex();
     }
 
     private void persistAccounts() {

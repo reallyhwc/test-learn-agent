@@ -24,8 +24,8 @@ public class AgentMetrics {
     }
 
     public void recordChatRequest(String userId, String type) {
+        // 不再将 userId 作为标签，避免高基数导致 Prometheus 指标爆炸
         Counter.builder("agent.chat.requests")
-                .tag("userId", userId)
                 .tag("type", type)
                 .register(registry)
                 .increment();
@@ -37,13 +37,11 @@ public class AgentMetrics {
 
     public void recordTtft(String userId, Timer.Sample sample) {
         sample.stop(Timer.builder("agent.chat.ttft")
-                .tag("userId", userId)
                 .register(registry));
     }
 
     public void recordDuration(String userId, Timer.Sample sample) {
         sample.stop(Timer.builder("agent.chat.duration")
-                .tag("userId", userId)
                 .register(registry));
     }
 
@@ -75,21 +73,24 @@ public class AgentMetrics {
                 .increment();
     }
 
+    /**
+     * 更新聊天记忆监控指标。
+     * 使用聚合 gauge（总消息数、总大小）替代按 userId 拆分，避免高基数标签导致内存爆炸。
+     */
     public void updateMemoryGauge(String userId, int messageCount, long sizeBytes) {
-        memoryMessages.computeIfAbsent(userId, k -> {
-            AtomicLong g = new AtomicLong();
-            Gauge.builder("agent.memory.messages", g, AtomicLong::get)
-                    .tag("userId", userId)
-                    .register(registry);
-            return g;
-        }).set(messageCount);
+        // 按 userId 存储最新值，用于计算聚合
+        memoryMessages.computeIfAbsent(userId, k -> new AtomicLong()).set(messageCount);
+        memorySizes.computeIfAbsent(userId, k -> new AtomicLong()).set(sizeBytes);
 
-        memorySizes.computeIfAbsent(userId, k -> {
-            AtomicLong g = new AtomicLong();
-            Gauge.builder("agent.memory.size_bytes", g, AtomicLong::get)
-                    .tag("userId", userId)
-                    .register(registry);
-            return g;
-        }).set(sizeBytes);
+        // 注册聚合 gauge（仅注册一次，后续自动读取最新聚合值）
+        Gauge.builder("agent.memory.total_messages",
+                        memoryMessages, m -> m.values().stream().mapToLong(AtomicLong::get).sum())
+                .register(registry);
+        Gauge.builder("agent.memory.total_size_bytes",
+                        memorySizes, m -> m.values().stream().mapToLong(AtomicLong::get).sum())
+                .register(registry);
+        Gauge.builder("agent.memory.active_users",
+                        memoryMessages, ConcurrentHashMap::size)
+                .register(registry);
     }
 }

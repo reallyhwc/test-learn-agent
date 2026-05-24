@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  backend-test:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Backend - Build & Test
+        run: cd finance-backend && ./mvnw -B verify
+
+      - name: MCP Server - Build & Test
+        run: cd finance-mcp-server && ./mvnw -B verify
+
+      - name: Agent - Build (skip AI tests)
+        run: cd finance-agent && ./mvnw -B compile
+
+      - name: Dependency Security Check (Backend)
+        run: |
+          cd finance-backend
+          ./mvnw org.owasp:dependency-check-maven:check -DfailBuildOnCVSS=9 || echo "::warning::Dependency vulnerabilities found"
+
+  frontend-test:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: npm
+          cache-dependency-path: finance-frontend/package-lock.json
+
+      - name: Install dependencies
+        run: cd finance-frontend && npm ci
+
+      - name: Run tests
+        run: cd finance-frontend && npx vitest run
+
+      - name: Build
+        run: cd finance-frontend && npm run build

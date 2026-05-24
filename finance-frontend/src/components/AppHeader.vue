@@ -14,7 +14,9 @@
 </template>
 
 <script setup>
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
+
+const userStore = useUserStore()
 </script>
 
 <style scoped>

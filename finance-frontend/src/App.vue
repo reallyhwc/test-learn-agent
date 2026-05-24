@@ -1,22 +1,38 @@
 <template>
-  <div class="app">
-    <AppHeader />
-    <el-container class="main-layout">
-      <el-main class="content-area">
-        <AccountList />
-        <TransactionForm @saved="refreshTx" />
-        <TransactionList ref="txList" />
-        <ChartPanel />
-      </el-main>
-      <el-aside width="400px" class="chat-area">
-        <ChatPanel />
-      </el-aside>
-    </el-container>
-  </div>
+  <ErrorBoundary>
+    <div class="app">
+      <AppHeader />
+      <div v-if="isMobile" class="mobile-tab-bar">
+        <button :class="{ active: mobileTab === 'main' }" @click="mobileTab = 'main'" aria-label="财务数据">
+          📊 数据
+        </button>
+        <button :class="{ active: mobileTab === 'chat' }" @click="mobileTab = 'chat'" aria-label="AI助手">
+          💬 助手
+        </button>
+      </div>
+      <el-container class="main-layout">
+        <el-main v-show="!isMobile || mobileTab === 'main'" class="content-area">
+          <AccountList />
+          <TransactionForm @saved="refreshTx" />
+          <TransactionList ref="txList" />
+          <ChartPanel />
+        </el-main>
+        <el-aside
+          :width="isMobile ? '100%' : '400px'"
+          class="chat-area"
+          :class="{ 'mobile-chat': isMobile }"
+          v-show="!isMobile || mobileTab === 'chat'"
+        >
+          <ChatPanel />
+        </el-aside>
+      </el-container>
+    </div>
+  </ErrorBoundary>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
+import ErrorBoundary from './components/ErrorBoundary.vue'
 import AppHeader from './components/AppHeader.vue'
 import AccountList from './components/AccountList.vue'
 import TransactionForm from './components/TransactionForm.vue'
@@ -26,6 +42,22 @@ import ChartPanel from './components/ChartPanel.vue'
 
 const txList = ref(null)
 function refreshTx() { txList.value?.fetchList() }
+
+const isMobile = ref(false)
+const mobileTab = ref('main')
+
+function checkMobile() {
+  isMobile.value = window.innerWidth < 768
+}
+
+onMounted(() => {
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+})
 </script>
 
 <style>
@@ -35,4 +67,30 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
 .main-layout { flex: 1; overflow: hidden; }
 .content-area { padding: 20px; overflow-y: auto; }
 .chat-area { width: 400px; border-left: 1px solid var(--el-border-color-light); overflow: hidden; }
+
+.mobile-tab-bar {
+  display: flex;
+  border-bottom: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
+}
+.mobile-tab-bar button {
+  flex: 1;
+  padding: 10px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  color: var(--el-text-color-regular);
+}
+.mobile-tab-bar button.active {
+  color: var(--el-color-primary);
+  border-bottom-color: var(--el-color-primary);
+}
+
+@media (max-width: 768px) {
+  .main-layout { flex-direction: column; }
+  .chat-area { width: 100% !important; border-left: none; border-top: 1px solid var(--el-border-color-light); height: 100%; }
+  .content-area { padding: 12px; }
+}
 </style>

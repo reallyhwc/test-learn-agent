@@ -13,6 +13,11 @@ finance:
     url: http://localhost:8080
 
 management:
+  tracing:
+    sampling:
+      probability: 1.0
+    propagation:
+      type: w3c
   endpoints:
     web:
       exposure:
@@ -21,3 +26,10 @@ management:
     export:
       prometheus:
         enabled: true
+
+otel:
+  service:
+    name: finance-mcp-server
+  exporter:
+    otlp:
+      endpoint: http://localhost:4318

@@ -2,7 +2,10 @@ package com.example.finance.controller;
 
 import com.example.finance.model.Account;
 import com.example.finance.service.FinanceService;
+import com.example.finance.util.LogMaskUtils;
+import com.example.finance.util.XssUtils;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -21,14 +24,24 @@ public class AccountController {
     }
 
     @GetMapping
-    public List<Account> listAccounts(@RequestParam(required = false, defaultValue = "default") String userId) {
-        log.info("GET /api/accounts userId={}", userId);
-        return financeService.listAccounts(userId);
+    public List<Account> listAccounts(
+            @RequestParam(required = false, defaultValue = "default") String userId,
+            @RequestParam(required = false, defaultValue = "50") Integer limit) {
+        if (limit == null || limit < 1) limit = 50;
+        if (limit > 50) limit = 50;
+        log.info("GET /api/accounts userId={} limit={}", LogMaskUtils.maskUserId(userId), limit);
+        List<Account> accounts = financeService.listAccounts(userId);
+        return accounts.size() > limit ? accounts.subList(0, limit) : accounts;
     }
 
     @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
     public Account createAccount(@RequestBody Account account) {
-        log.info("POST /api/accounts name={} type={} userId={}", account.getName(), account.getType(), account.getUserId());
+        log.info("POST /api/accounts name={} type={} userId={}", account.getName(), account.getType(), LogMaskUtils.maskUserId(account.getUserId()));
+        // XSS 清洗 name 字段
+        if (account.getName() != null) {
+            account.setName(XssUtils.sanitize(account.getName()));
+        }
         return financeService.createAccount(account);
     }
 

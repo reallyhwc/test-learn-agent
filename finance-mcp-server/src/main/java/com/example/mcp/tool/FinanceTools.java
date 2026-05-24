@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Component
@@ -36,9 +37,10 @@ public class FinanceTools {
     @McpTool(name = "query_balance",
             description = "按 accountId 查询单个账户余额。注意：list_accounts 返回的对象已含 balance 字段，"
                     + "查询余额时优先用 list_accounts 一次拿全，不要重复调用此工具。")
-    public BigDecimal queryBalance(
+    public Object queryBalance(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "账户ID") Long accountId) {
+        userId = validateUserId(userId);
         log.info("queryBalance called with userId={}, accountId={}", userId, accountId);
         long start = System.nanoTime();
         try {
@@ -50,17 +52,19 @@ public class FinanceTools {
             return result;
         } catch (Exception e) {
             recordError("query_balance", e);
-            throw e;
+            log.error("查询余额失败: userId={}, accountId={}", userId, accountId, e);
+            return "查询余额失败，请检查账户ID是否正确";
         }
     }
 
     @McpTool(name = "list_transactions", description = "查询交易记录列表，可按日期、分类、类型和账户过滤")
-    public List<TransactionResponse> listTransactions(
+    public Object listTransactions(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "交易日期 (yyyy-MM-dd)") String date,
             @McpToolParam(description = "交易分类，如餐饮、交通、购物等") String category,
             @McpToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
             @McpToolParam(description = "账户ID") Long accountId) {
+        userId = validateUserId(userId);
         log.info("listTransactions called with userId={}, date={}, category={}, type={}, accountId={}",
                 userId, date, category, type, accountId);
         long start = System.nanoTime();
@@ -68,7 +72,7 @@ public class FinanceTools {
         try {
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions")
                     .queryParam("userId", userId)
-                    .queryParam("pageSize", 1000);
+                    .queryParam("pageSize", 100);
             if (date != null) uriBuilder.queryParam("date", date);
             if (category != null) uriBuilder.queryParam("category", category);
             if (type != null) uriBuilder.queryParam("type", type);
@@ -98,18 +102,33 @@ public class FinanceTools {
             return result;
         } catch (Exception e) {
             recordError("list_transactions", e);
-            throw e;
+            log.error("查询交易记录失败: userId={}", userId, e);
+            return "查询交易记录失败，请稍后重试";
         }
     }
 
     @McpTool(name = "add_transaction", description = "添加一笔交易记录")
-    public Map<String, Object> addTransaction(
+    public Object addTransaction(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "账户ID") Long accountId,
             @McpToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
             @McpToolParam(description = "金额") BigDecimal amount,
             @McpToolParam(description = "分类") String category,
             @McpToolParam(description = "备注") String note) {
+        userId = validateUserId(userId);
+        // 参数校验 — 返回友好错误信息，不抛异常
+        if (accountId == null) {
+            return "添加交易失败，账户ID不能为空";
+        }
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            return "添加交易失败，金额必须大于0";
+        }
+        if (type == null || (!type.equalsIgnoreCase("INCOME") && !type.equalsIgnoreCase("EXPENSE"))) {
+            return "添加交易失败，交易类型必须是 INCOME 或 EXPENSE";
+        }
+        if (category == null || category.isBlank()) {
+            return "添加交易失败，分类不能为空";
+        }
         log.info("addTransaction called with userId={}, accountId={}, type={}, amount={}, category={}",
                 userId, accountId, type, amount, category);
         long start = System.nanoTime();
@@ -133,29 +152,53 @@ public class FinanceTools {
             return result;
         } catch (Exception e) {
             recordError("add_transaction", e);
-            throw e;
+            log.error("添加交易失败: userId={}, accountId={}", userId, accountId, e);
+            return "添加交易失败，请检查参数是否完整";
         }
     }
 
     @McpTool(name = "list_accounts",
             description = "查询用户的全部账户列表。返回字段：id、name、type、balance（实时余额）、userId。"
                     + "balance 已包含在返回中，无需再调用 query_balance。")
-    public List<AccountResponse> listAccounts(
+    public Object listAccounts(
             @McpToolParam(description = "用户ID") String userId) {
+        userId = validateUserId(userId);
         log.info("listAccounts called with userId={}", userId);
         long start = System.nanoTime();
 
         try {
+            // 使用 UriComponentsBuilder 防止 URL 注入（统一风格）
+            java.net.URI uri = UriComponentsBuilder.fromPath("/api/accounts")
+                    .queryParam("userId", userId)
+                    .build().toUri();
             List<AccountResponse> result = List.of(restClient.get()
-                    .uri("/api/accounts?userId=" + userId)
+                    .uri(uri)
                     .retrieve()
                     .body(AccountResponse[].class));
             recordSuccess("list_accounts", start);
             return result;
         } catch (Exception e) {
             recordError("list_accounts", e);
-            throw e;
+            log.error("查询账户列表失败: userId={}", userId, e);
+            return "查询账户列表失败，请稍后重试";
         }
+    }
+
+    /** 仅允许安全字符，防止路径穿越和注入 */
+    private static final Pattern SAFE_USER_ID = Pattern.compile("^[a-zA-Z0-9_-]{1,64}$");
+
+    /**
+     * 校验 userId 格式，防止注入攻击和横向越权。
+     * 在 demo 中仅做格式校验；生产环境应从认证上下文获取 userId。
+     */
+    private String validateUserId(String userId) {
+        if (userId == null || userId.isBlank()) {
+            throw new IllegalArgumentException("userId 不能为空");
+        }
+        if (!SAFE_USER_ID.matcher(userId).matches()) {
+            throw new IllegalArgumentException("userId 格式非法，仅允许字母、数字、下划线和短横线");
+        }
+        return userId;
     }
 
     private void recordSuccess(String toolName, long startNs) {

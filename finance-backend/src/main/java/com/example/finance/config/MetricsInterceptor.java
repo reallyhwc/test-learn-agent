@@ -29,7 +29,9 @@ public class MetricsInterceptor implements HandlerInterceptor {
     @Override
     public void afterCompletion(HttpServletRequest request, HttpServletResponse response,
                                 Object handler, Exception ex) {
-        long startTime = (long) request.getAttribute("startTime");
+        Object startTimeAttr = request.getAttribute("startTime");
+        if (startTimeAttr == null) return; // preHandle 未执行（如被其他过滤器拦截），跳过指标记录
+        long startTime = (long) startTimeAttr;
         long durationNs = System.nanoTime() - startTime;
         String endpoint = request.getRequestURI().replaceAll("/\\d+", "/{id}");
 

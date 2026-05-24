@@ -1,9 +1,10 @@
 <template>
-  <div class="account-list">
+  <div class="account-list" role="region" aria-label="账户列表">
     <h3>账户</h3>
     <div v-if="loading" v-loading="loading" style="height: 60px"></div>
-    <el-row v-else :gutter="12">
-      <el-col v-for="account in accounts" :key="account.id" :span="8">
+    <el-alert v-else-if="error" :title="error" type="error" show-icon />
+    <el-row v-else-if="accounts.length > 0" :gutter="12">
+      <el-col v-for="account in accounts" :key="account.id" :xs="24" :sm="12" :md="8">
         <el-card shadow="hover" class="account-card">
           <div class="card-top">
             <el-tag :type="tagType(account.type)" size="small">{{ typeLabel(account.type) }}</el-tag>
@@ -15,24 +16,32 @@
         </el-card>
       </el-col>
     </el-row>
+    <el-empty v-else description="暂无账户" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted, watch } from 'vue'
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
+import { apiGet, handleApiError } from '../utils/api.js'
+
+const userStore = useUserStore()
 
 const accounts = ref([])
 const loading = ref(true)
+const error = ref(null)
 
 const typeLabel = (t) => ({ CASH: '现金', BANK: '储蓄', CARD: '信用' }[t] || t)
 const tagType = (t) => ({ CASH: 'success', BANK: 'primary', CARD: 'warning' }[t] || 'info')
 
 async function fetchAccounts() {
   loading.value = true
+  error.value = null
   try {
-    const res = await fetch(`/api/accounts?userId=${userStore.currentUser}`)
-    accounts.value = await res.json()
+    accounts.value = await apiGet(`/api/accounts?userId=${encodeURIComponent(userStore.currentUser)}`)
+  } catch (e) {
+    error.value = e.message
+    handleApiError(e, '加载账户失败')
   } finally {
     loading.value = false
   }

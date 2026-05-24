@@ -25,17 +25,19 @@ import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
 import { LineChart, PieChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
-import { userStore } from '../stores/userStore.js'
+import { useUserStore } from '../stores/userStore.js'
+import { apiGet } from '../utils/api.js'
 
 use([CanvasRenderer, LineChart, PieChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent])
+
+const userStore = useUserStore()
 
 const chartData = ref([])
 const hasData = computed(() => chartData.value.length > 0)
 
 async function fetchData() {
   try {
-    const res = await fetch(`/api/transactions?userId=${userStore.currentUser}&pageSize=1000`)
-    const data = await res.json()
+    const data = await apiGet(`/api/transactions?userId=${encodeURIComponent(userStore.currentUser)}&pageSize=1000`)
     chartData.value = data.items || []
   } catch (e) {
     chartData.value = []
