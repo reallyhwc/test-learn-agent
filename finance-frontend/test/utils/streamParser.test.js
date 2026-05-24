@@ -46,4 +46,26 @@ describe('createStreamBuffer', () => {
     expect(buf.feed('data:abc\n')).toEqual([])
     expect(buf.feed('\n')).toEqual(['abc'])
   })
+
+  it('一个 event 内多个 data: 行用 \\n 拼接（SSE spec）', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('data:line1\ndata:line2\n\n')).toEqual(['line1\nline2'])
+  })
+
+  it('markdown 表格场景：多行 \\n 在一个 event 里通过 multi-data 编码', () => {
+    const buf = createStreamBuffer()
+    const sseText =
+      'data:| 项 | 值 |\n' +
+      'data:|---|---|\n' +
+      'data:| a | 1 |\n\n'
+    expect(buf.feed(sseText)).toEqual(['| 项 | 值 |\n|---|---|\n| a | 1 |'])
+  })
+
+  it('多个 event，每个 event 都各自合并 data: 行', () => {
+    const buf = createStreamBuffer()
+    const sseText =
+      'data:a1\ndata:a2\n\n' +
+      'data:b1\ndata:b2\n\n'
+    expect(buf.feed(sseText)).toEqual(['a1\na2', 'b1\nb2'])
+  })
 })

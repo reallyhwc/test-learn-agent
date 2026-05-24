@@ -160,7 +160,10 @@ public class ChatController {
 
     private void writeSseEvent(OutputStream out, String token) {
         try {
-            String sse = "data:" + token + "\n\n";
+            // SSE spec: payload 内的 \n 必须每行加 data: 前缀，浏览器解析时再用 \n 拼回。
+            // 之前 token 内含 \n（如 markdown 表格行）会破坏 event 边界，前端只收到 \n 之前的内容。
+            String escaped = token.replace("\n", "\ndata:");
+            String sse = "data:" + escaped + "\n\n";
             out.write(sse.getBytes(StandardCharsets.UTF_8));
             out.flush();
         } catch (IOException e) {
