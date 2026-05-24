@@ -11,3 +11,13 @@ spring:
 finance:
   backend:
     url: http://localhost:8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true

@@ -18,3 +18,18 @@ spring:
           connections:
             finance-mcp:
               url: http://localhost:8082
+    retry:
+      max-attempts: 2
+      backoff:
+        initial-interval: 1000
+        multiplier: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,metrics,prometheus
+  metrics:
+    export:
+      prometheus:
+        enabled: true
