@@ -52,16 +52,8 @@ const props = defineProps({
 
 const bubbleRef = ref(null)
 const feedback = ref(null)
-// 流式期间默认展开（用户能看到 reasoning 实时滚动），结束后自动折叠
-const thinkingCollapsed = ref(false)
-
-watch(
-  () => props.streaming,
-  (now) => {
-    // 流刚结束 → 自动折叠思考过程，把视觉焦点放在最终答案
-    if (!now) thinkingCollapsed.value = true
-  },
-)
+// 默认折叠 — 大多数 reasoning 对用户没价值，需要时点 ▶ 展开看
+const thinkingCollapsed = ref(true)
 
 const chartMgr = createChartManager(ChartRenderer)
 

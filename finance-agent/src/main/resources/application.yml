@@ -14,6 +14,9 @@ spring:
       chat:
         options:
           model: ${LLM_MODEL}
+          # reasoning 模型对简单查询过度思考（实测 24s 中 23s 是 reasoning）。
+          # low 让模型尽量短链推理，复杂问题仍能分析；如需深度推理可改 medium/high
+          reasoning-effort: low
     mcp:
       client:
         type: SYNC
