@@ -27,14 +27,24 @@ let chartIdCounter = 0
 const chartConfigs = new Map()
 
 function parseChartTags(html) {
-  const regex = /<chart\s+type="(bar|pie|line)"\s+title="(.*?)">([\s\S]*?)<\/chart>/g
+  // 宽松匹配：容忍 LLM 输出中属性间缺失空格、等号前后多余空格等情况
+  const regex = /<chart\s*type\s*=\s*"(bar|pie|line)"\s*title\s*=\s*"(.*?)"\s*>([\s\S]*?)<\/chart\s*>/g
 
   return html.replace(regex, (match, type, title, csvBody) => {
     const lines = csvBody.trim().split('\n').filter(l => l.trim())
     if (lines.length < 2) return match
 
-    const headers = lines[0].split(',').map(h => h.trim())
-    const rows = lines.slice(1).map(l => l.split(',').map(c => c.trim()))
+    // 去除列名中的括号注释（如 "金额（元）" → "金额"）
+    const headers = lines[0].split(',').map(h => h.trim().replace(/（[^）]*）/g, ''))
+    const rows = lines.slice(1).map(l => {
+      const cells = l.split(',').map(c => c.trim())
+      // 解析数值时去掉非数字字符（除小数点），保留标签列原文
+      return cells.map((c, i) => {
+        if (i === 0) return c // 标签列保持原文
+        const num = parseFloat(c.replace(/[^0-9.]/g, ''))
+        return isNaN(num) ? '0' : String(num)
+      })
+    })
 
     if (rows.length === 0) return match
 
