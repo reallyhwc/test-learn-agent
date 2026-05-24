@@ -122,4 +122,54 @@ class TransactionControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.items").isEmpty());
     }
+
+    // === 日期范围过滤 ===
+
+    @Test
+    void shouldFilterByStartDate() throws Exception {
+        mockMvc.perform(get("/api/transactions")
+                        .param("userId", "default")
+                        .param("startDate", "2026-05-01"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray());
+    }
+
+    @Test
+    void shouldFilterByDateRange() throws Exception {
+        mockMvc.perform(get("/api/transactions")
+                        .param("userId", "default")
+                        .param("startDate", "2026-05-01")
+                        .param("endDate", "2026-05-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.items").isArray());
+    }
+
+    // === 聚合接口 ===
+
+    @Test
+    void shouldReturnSummary() throws Exception {
+        mockMvc.perform(get("/api/transactions/summary")
+                        .param("userId", "default"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void shouldReturnSummaryFilteredByType() throws Exception {
+        mockMvc.perform(get("/api/transactions/summary")
+                        .param("userId", "default")
+                        .param("type", "INCOME"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
+    @Test
+    void shouldReturnSummaryWithDateRange() throws Exception {
+        mockMvc.perform(get("/api/transactions/summary")
+                        .param("userId", "default")
+                        .param("startDate", "2026-01-01")
+                        .param("endDate", "2026-12-31"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
 }

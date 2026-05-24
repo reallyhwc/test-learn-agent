@@ -172,4 +172,62 @@ class FinanceToolsTest {
         List<AccountResponse> result = (List<AccountResponse>) financeTools.listAccounts("nobody");
         assertThat(result).isEmpty();
     }
+
+    // === 入参校验 ===
+
+    @Test
+    void shouldFallbackToDefaultWhenUserIdIsNull() {
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
+                .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
+
+        financeTools.listTransactions(null, "{}");
+        // 不抛异常即通过，validateUserId 会回退到 "default"
+    }
+
+    @Test
+    void shouldFallbackToDefaultWhenUserIdIsBlank() {
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
+                .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
+
+        financeTools.listTransactions("  ", "{}");
+    }
+
+    @Test
+    void shouldHandleInvalidFiltersJsonGracefully() {
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
+                .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
+
+        // 传入非法 JSON，parseFilters 应降级为空 map
+        @SuppressWarnings("unchecked")
+        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", "not-valid-json");
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void shouldHandleNullFilters() {
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
+                .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
+
+        financeTools.listTransactions("default", null);
+    }
+
+    @Test
+    void shouldReturnErrorMessageWhenBackendReturns500OnSummary() {
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions/summary")))
+                .andRespond(withServerError());
+
+        Object result = financeTools.summarizeTransactions("default", "{}");
+        assertThat(result).isInstanceOf(String.class);
+        assertThat(result.toString()).contains("失败");
+    }
+
+    @Test
+    void shouldReturnErrorMessageWhenBackendReturns500OnList() {
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
+                .andRespond(withServerError());
+
+        Object result = financeTools.listTransactions("default", "{}");
+        assertThat(result).isInstanceOf(String.class);
+        assertThat(result.toString()).contains("失败");
+    }
 }

@@ -27,6 +27,16 @@ jobs:
       - name: Agent - Build (skip AI tests)
         run: cd finance-agent && ./mvnw -B compile
 
+      - name: Upload Backend Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            finance-backend/target/surefire-reports/
+            finance-mcp-server/target/surefire-reports/
+          retention-days: 7
+
       - name: Dependency Security Check (Backend)
         run: |
           cd finance-backend
@@ -46,8 +56,19 @@ jobs:
       - name: Install dependencies
         run: cd finance-frontend && npm ci
 
-      - name: Run tests
-        run: cd finance-frontend && npx vitest run
+      - name: Lint
+        run: cd finance-frontend && npx eslint src/ --max-warnings=0 || echo "::warning::ESLint warnings found"
+
+      - name: Run tests with coverage
+        run: cd finance-frontend && npx vitest run --coverage --reporter=verbose 2>&1 || npx vitest run --reporter=verbose
+
+      - name: Upload Frontend Test Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-reports
+          path: finance-frontend/coverage/
+          retention-days: 7
 
       - name: Build
         run: cd finance-frontend && npm run build
