@@ -1,4 +1,4 @@
-# Personal Finance Agent · AI-Powered Bookkeeping
+# Personal Finance Agent · AI 记账助手
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java 17](https://img.shields.io/badge/Java-17-orange)](https://adoptium.net/)
@@ -6,33 +6,33 @@
 [![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D)](https://vuejs.org/)
 [![Element Plus](https://img.shields.io/badge/Element_Plus-2.14-blue)](https://element-plus.org/)
 
-A learning demo for **AI Agent** and **MCP (Model Context Protocol)** in the Java ecosystem — personal finance bookkeeping you can talk to.
+一个学习型 Demo，在 Java 生态体系下实践 **AI Agent** 和 **MCP 协议（Model Context Protocol）**——可以对话的记账应用。
 
-[中文](README_CN.md) | English
-
----
-
-## What is this?
-
-A 4-service project that explores how to build AI-powered applications on the JVM. You record daily expenses and income, then query them through natural language conversation. The AI understands your intent, calls the right APIs via MCP tools, and returns formatted results — with streaming output and conversation memory.
-
-**What you can learn from this codebase:**
-- How MCP protocol bridges LLMs and business APIs
-- How Spring AI integrates with OpenAI-compatible models
-- How to implement SSE streaming from LLM to browser, token by token
-- How to structure a multi-service Java project with clean boundaries
+中文 | [English](README_EN.md)
 
 ---
 
-## Architecture
+## 这是什么？
+
+一个包含 4 个独立服务的项目，探索如何在 JVM 上构建 AI 驱动的应用。记录日常收支，然后通过自然语言对话查询数据。AI 理解你的意图，通过 MCP 工具调用正确的 API，返回格式化结果——支持流式输出和对话记忆。
+
+**你能从这个代码库中学到：**
+- MCP 协议如何桥接 LLM 和业务 API
+- Spring AI 如何集成 OpenAI 兼容模型
+- 如何实现从 LLM 到浏览器的逐字 SSE 流式输出
+- 如何组织多服务 Java 项目的清晰边界
+
+---
+
+## 系统架构
 
 ```mermaid
 graph LR
-    Browser["Browser<br/>:5173"]
-    Frontend["Frontend<br/>Vue 3 + Element Plus"]
+    Browser["浏览器<br/>:5173"]
+    Frontend["前端<br/>Vue 3 + Element Plus"]
     Agent["Agent :8081<br/>Spring AI<br/>MCP Client<br/>ChatMemory"]
-    MCPServer["MCP Server :8082<br/>4 Tools"]
-    Backend["Backend :8080<br/>Spring Boot<br/>CSV"]
+    MCPServer["MCP Server :8082<br/>4 个 Tool"]
+    Backend["Backend :8080<br/>Spring Boot<br/>CSV 存储"]
 
     Browser --> Frontend
     Frontend -->|"REST"| Backend
@@ -41,18 +41,18 @@ graph LR
     MCPServer -->|"REST"| Backend
 ```
 
-**4 services, 1 protocol chain.** The frontend talks to both the Backend (for CRUD) and the Agent (for AI chat). When the Agent needs data, it doesn't call the Backend directly — it goes through the MCP Server, which exposes Backend APIs as standardized MCP tools.
+**4 个服务，1 条协议链路。** 前端同时对接 Backend（记账 CRUD）和 Agent（AI 对话）。Agent 需要数据时，不直接调 Backend，而是通过 MCP Server——后者将 Backend API 包装为标准 MCP 工具。
 
 ---
 
-## AI Chat Flow
+## AI 对话流程
 
-Here's what happens when a user asks *"How much did I spend on dining this month?"*
+用户问 *"这个月餐饮花了多少？"* 的全过程：
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant F as Frontend
+    participant U as 用户
+    participant F as 前端
     participant A as Agent
     participant L as LLM
     participant M as MCP Server
@@ -60,33 +60,33 @@ sequenceDiagram
 
     U->>F: "这个月餐饮花了多少？"
     F->>A: POST /api/chat/stream
-    A->>L: System prompt + user message
+    A->>L: System prompt + 用户消息
     L-->>A: Function call<br/>list_transactions(category="餐饮")
-    A->>M: Invoke tool
+    A->>M: 调用工具
     M->>B: GET /api/transactions?category=餐饮
-    B-->>M: PageResult<Transaction>
+    B-->>M: PageResult&lt;Transaction&gt;
     M-->>A: Transaction[]
-    A->>L: Tool results
+    A->>L: 工具返回的真实数据
     L-->>A: "本月餐饮支出共 ¥1,644 元..."
-    A-->>F: SSE data: token token token...
-    F-->>U: Rendered markdown
+    A-->>F: SSE: data: token token token...
+    F-->>U: 渲染 Markdown
 ```
 
-The key insight: **the LLM decides which tool to call.** We don't hardcode any intent matching. The system prompt tells the LLM what tools are available, and it autonomously invokes them — this is the core of the Agent pattern.
+核心洞察：**由 LLM 自主决定调用哪个工具。** 我们没有硬编码任何意图匹配逻辑。System prompt 告诉 LLM 有哪些工具可用，它自己判断并调用——这就是 Agent 模式的核心。
 
 ---
 
-## Why 4 Separate Services?
+## 为什么要拆成 4 个服务？
 
-You could put all Java code in a single Spring Boot app. This project deliberately splits them:
+把 Java 代码塞进一个 Spring Boot 项目也能跑。故意拆开是为了学习：
 
 ```mermaid
 graph TB
-    subgraph "Could be one process"
+    subgraph "可以是一个进程"
         direction LR
         A[Backend] --- M[MCP Server] --- G[Agent]
     end
-    subgraph "Actually deployed"
+    subgraph "实际部署"
         direction TB
         A2[Backend :8080]
         M2[MCP Server :8082]
@@ -95,59 +95,59 @@ graph TB
     end
 ```
 
-**The split isn't about production best practice — it's about learning.**
+**拆分不是为了生产最佳实践，而是为了看清每一层。**
 
-| Service | Role | Knows about AI? | Knows about business? |
-|---------|------|:---:|:---:|
-| Backend | Pure REST API + CSV storage | No | Yes |
-| MCP Server | Wraps REST as MCP tools | No | No (just passes through) |
-| Agent | MCP Client + LLM orchestration | Yes | No |
-| Frontend | UI, calls both Backend and Agent | No | No |
+| 服务 | 职责 | 知道 AI？ | 知道业务？ |
+|------|------|:---:|:---:|
+| Backend | 纯 REST API + CSV 存储 | 不 | 是 |
+| MCP Server | 将 REST 包装为 MCP 工具 | 不 | 不（纯透传） |
+| Agent | MCP Client + LLM 编排 | 是 | 不 |
+| Frontend | UI，同时调 Backend 和 Agent | 不 | 不 |
 
-This separation makes the MCP layer **visible and tangible**. In a real system you might merge the MCP Server with the Backend, but here you can see exactly where the protocol boundary sits.
-
----
-
-## Design Decisions
-
-**CSV instead of a database** — Zero setup. Clone, configure your LLM key, run. No MySQL, no Docker. CSV files are human-readable for debugging.
-
-**`.env` for configuration** — One file for LLM credentials. Spring Boot loads it natively via a custom `PropertySourceLoader` that teaches it the `.env` extension. No environment variables needed.
-
-**SSE over WebSocket** — The Agent streams tokens to the browser via Server-Sent Events. It's unidirectional (server → client), which is exactly what streaming LLM output needs. Simpler than WebSocket, works through HTTP proxies.
-
-**Multi-user via `userId` param** — A pseudo-login with a `<select>` dropdown. No real auth — but every API call and MCP tool invocation carries a `userId`, teaching the pattern of multi-tenant data isolation without the ceremony of OAuth.
+这种分离让 MCP 层**可见且可感知**。真实系统中可以把 MCP Server 合并到 Backend，但这里你能清楚看到协议边界究竟在哪里。
 
 ---
 
-## Quick Start
+## 设计决策
 
-**Prerequisites:** Java 17+, Node.js 18+
+**CSV 而非数据库**——零环境依赖。clone 下来配好 LLM Key 就能跑。不用 MySQL，不用 Docker。CSV 文件可以直接用文本编辑器打开调试。
+
+**`.env` 配置文件**——一份文件搞定 LLM 凭证。Spring Boot 通过自定义 `PropertySourceLoader` 原生加载 `.env` 文件，不需要手动 export 环境变量。
+
+**SSE 而非 WebSocket**——Agent 通过 Server-Sent Events 向浏览器逐字推送 token。SSE 是单向的（服务端→客户端），正好契合流式 LLM 输出的场景。比 WebSocket 简单，能穿透 HTTP 代理。
+
+**多用户通过 `userId` 参数**——顶部下拉框切换用户，不搞真正的鉴权。但每个 API 调用和 MCP 工具调用都携带 `userId`，演示了多租户数据隔离的思路，不需要 OAuth 那套仪式感。
+
+---
+
+## 快速开始
+
+**环境要求：** Java 17+、Node.js 18+
 
 ```bash
-# 1. Clone
+# 1. 克隆
 git clone https://github.com/your-username/personal-finance-agent.git
 cd personal-finance-agent
 
-# 2. Configure LLM
+# 2. 配置 LLM
 cp .env.example .env
-# Edit .env → paste your API key
+# 编辑 .env → 填入你的 API Key
 
-# 2b. Activate git hooks (commit lint + auto-push)
+# 2b. 激活 git hooks（commit 格式校验 + 自动推送）
 git config core.hooksPath githooks
 
-# 3. Install frontend deps
+# 3. 安装前端依赖
 cd finance-frontend && npm install && cd ..
 
-# 4. Start all services
+# 4. 一键启动
 ./start-all.sh
 
-# 5. Open http://localhost:5173
+# 5. 打开 http://localhost:5173
 ```
 
-> **Tip:** If Maven complains about compilation, ensure `JAVA_HOME` points to JDK 17. The wrapper defaults to your system Java — which might be 8.
+> **提示：** 如果 Maven 编译报错，检查 `JAVA_HOME` 是否指向 JDK 17。`mvnw` 默认用系统 Java——可能是 Java 8。
 
-**Manual start (4 terminals, for debugging):**
+**手动启动（4 个终端窗口，方便调试）：**
 
 ```bash
 # T1: Backend
@@ -165,46 +165,46 @@ cd finance-frontend && npm run dev
 
 ---
 
-## Project Map
+## 项目地图
 
 ```
 .
-├── finance-backend/         Spring Boot · REST API · CSV via Jackson CsvMapper
-│   └── src/.../controller, service, repository, model
-├── finance-mcp-server/      Spring AI MCP · @McpTool annotations · SSE transport
-│   └── src/.../tool/FinanceTools.java  ← 4 tools, 1 file
+├── finance-backend/         Spring Boot · REST API · Jackson CsvMapper
+│   └── .../controller, service, repository, model
+├── finance-mcp-server/      Spring AI MCP · @McpTool 注解 · SSE 传输
+│   └── .../tool/FinanceTools.java  ← 4 个工具，1 个文件
 ├── finance-agent/           Spring AI ChatClient · MCP Client · ChatMemory
-│   └── src/.../controller/ChatController.java  ← /chat, /chat/stream
-├── finance-frontend/        Vue 3 · Element Plus · ECharts · SSE streaming
-│   └── src/components/      ← 7 components, 1 store
-├── .env.example             LLM config template → cp to .env
-└── start-all.sh             One-click startup
+│   └── .../controller/ChatController.java  ← /chat, /chat/stream
+├── finance-frontend/        Vue 3 · Element Plus · ECharts · SSE 流式
+│   └── src/components/      ← 7 个组件，1 个 store
+├── .env.example             LLM 配置模板 → 复制为 .env
+└── start-all.sh             一键启动
 ```
 
-Each module is self-contained with its own `pom.xml` (Java) or `package.json` (frontend). No shared code between them — they communicate only over HTTP.
+每个模块有自己的 `pom.xml`（Java）或 `package.json`（前端），互相不共享代码——仅通过 HTTP 通信。
 
 ---
 
-## AI Chat Examples
+## AI 对话示例
 
 ```
-You: 我的账户余额是多少？
+你: 我的账户余额是多少？
 AI: 您的默认现金账户当前余额为 ¥20,273.96 元。
 
-You: 这个月餐饮花了多少钱？
+你: 这个月餐饮花了多少钱？
 AI: 本月餐饮支出共 ¥1,644 元，共 26 笔。
 
-You: 帮我记一笔：午餐 50 元
+你: 帮我记一笔：午餐 50 元
 AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 ```
 
-All queries go through the MCP tool chain. The AI never fabricates data — the system prompt instructs it to call tools for every financial question.
+所有查询都走 MCP 工具链路。AI 不会编造数据——System prompt 要求它每次都必须调用工具获取真实数据。
 
 ---
 
-## Using with Claude Desktop
+## Claude Desktop 接入
 
-Since the MCP Server speaks standard MCP protocol:
+MCP Server 对外暴露标准 MCP 协议：
 
 ```json
 {
@@ -216,15 +216,15 @@ Since the MCP Server speaks standard MCP protocol:
 }
 ```
 
-Add this to `claude_desktop_config.json` and Claude can directly query your bookkeeping data.
+加到 `claude_desktop_config.json`，Claude Desktop 就能直接查询你的记账数据。
 
 ---
 
-## FAQ
+## 常见问题
 
-**Can I use a different LLM?** Yes. Edit `.env` — any OpenAI-compatible API works (OpenAI, Qwen, Groq, Moonshot, SiliconFlow, etc.).
+**能用其他大模型吗？** 可以。编辑 `.env` 切换——任何 OpenAI 兼容 API 都行（OpenAI、通义千问、Groq、Moonshot、SiliconFlow 等）。
 
-**Port already in use?**
+**端口被占用？**
 ```bash
 lsof -ti:8080 | xargs kill -9  # Backend
 lsof -ti:8081 | xargs kill -9  # Agent
@@ -232,7 +232,7 @@ lsof -ti:8082 | xargs kill -9  # MCP Server
 lsof -ti:5173 | xargs kill -9  # Frontend
 ```
 
-**Reset all data?** `rm -rf finance-backend/data`
+**怎么重置数据？** `rm -rf finance-backend/data`
 
 ## License
 
