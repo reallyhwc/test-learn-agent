@@ -1,0 +1,4 @@
+id,accountId,type,amount,category,note,date
+1,1,EXPENSE,50.00,餐饮,午餐,2026-01-01
+2,1,INCOME,1000.00,工资,1月工资,2026-01-05
+3,1,EXPENSE,30.00,交通,地铁,2026-01-02

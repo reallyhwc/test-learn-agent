@@ -1,0 +1,3 @@
+id,name,type,balance,userId
+1,默认现金账户,CASH,10000.00,default
+2,张三钱包,CASH,5000.00,zhangsan

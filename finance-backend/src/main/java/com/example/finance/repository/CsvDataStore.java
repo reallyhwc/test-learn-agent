@@ -133,7 +133,7 @@ public class CsvDataStore {
                                                String category, TransactionType type, String userId) {
         return transactions.stream()
                 .filter(t -> accountId == null || t.getAccountId().equals(accountId))
-                .filter(t -> date == null || t.getDate().equals(date))
+                .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
                 .filter(t -> category == null || category.equals(t.getCategory()))
                 .filter(t -> type == null || t.getType() == type)
                 .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
@@ -144,7 +144,7 @@ public class CsvDataStore {
             String category, TransactionType type, String userId, int page, int pageSize) {
         List<Transaction> filtered = transactions.stream()
                 .filter(t -> accountId == null || t.getAccountId().equals(accountId))
-                .filter(t -> date == null || t.getDate().equals(date))
+                .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
                 .filter(t -> category == null || category.equals(t.getCategory()))
                 .filter(t -> type == null || t.getType() == type)
                 .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))

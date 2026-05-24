@@ -1,0 +1,8 @@
+finance:
+  data-dir: src/test/resources/test-data
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

@@ -1,0 +1,11 @@
+id,name,type
+1,工资,INCOME
+2,兼职,INCOME
+3,理财,INCOME
+4,餐饮,EXPENSE
+5,交通,EXPENSE
+6,购物,EXPENSE
+7,房租,EXPENSE
+8,娱乐,EXPENSE
+9,医疗,EXPENSE
+10,其他,EXPENSE
