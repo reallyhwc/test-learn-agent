@@ -53,9 +53,33 @@ describe('extractTableData', () => {
 
   it('清洗千分位逗号', () => {
     const t = makeTable(`<table><thead><tr><th>名</th><th>额</th></tr></thead>
-      <tbody><tr><td>合计</td><td>¥12,345.67</td></tr></tbody></table>`)
+      <tbody><tr><td>餐饮</td><td>¥12,345.67</td></tr></tbody></table>`)
     const r = extractTableData(t)
-    expect(r.rows[0]).toEqual(['合计', '12345.67'])
+    expect(r.rows[0]).toEqual(['餐饮', '12345.67'])
+  })
+
+  it('过滤合计/总计行', () => {
+    const t = makeTable(`<table><thead><tr><th>分类</th><th>金额</th></tr></thead>
+      <tbody>
+        <tr><td>餐饮</td><td>1200</td></tr>
+        <tr><td>交通</td><td>300</td></tr>
+        <tr><td>合计</td><td>1500</td></tr>
+      </tbody></table>`)
+    const r = extractTableData(t)
+    expect(r.rows).toHaveLength(2)
+    expect(r.rows.map(row => row[0])).not.toContain('合计')
+  })
+
+  it('量级差 >100x 的多列只保留金额列', () => {
+    const t = makeTable(`<table><thead><tr><th>分类</th><th>金额</th><th>笔数</th></tr></thead>
+      <tbody>
+        <tr><td>工资</td><td>300000</td><td>17</td></tr>
+        <tr><td>理财</td><td>24000</td><td>15</td></tr>
+      </tbody></table>`)
+    const r = extractTableData(t)
+    // 量级差 300000/17 > 100，应只保留金额列
+    expect(r.headers).toEqual(['分类', '金额'])
+    expect(r.rows[0]).toEqual(['工资', '300000'])
   })
 
   it('百分号清洗', () => {

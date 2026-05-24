@@ -52,7 +52,10 @@ export function extractTableData(table) {
   }
   if (numCols.length === 0) return null
 
+  // 过滤掉"合计""总计""小计"等汇总行
+  const summaryLabels = ['合计', '总计', '小计', 'total', 'sum', '合 计']
   const cleanRows = rows
+    .filter((r) => !summaryLabels.includes(r[0]?.trim?.().toLowerCase?.() ?? r[0]?.trim?.()))
     .map((r) =>
       r.map((c, i) => {
         if (i === 0) return c
@@ -64,16 +67,30 @@ export function extractTableData(table) {
 
   if (cleanRows.length === 0) return null
 
-  const hasMultipleNumericCols = numCols.length > 1
-  const chartType = hasMultipleNumericCols
+  // 多数值列且量级差 >100x 时，只保留最大量级的列（通常是金额列）
+  let selectedNumCols = numCols
+  if (numCols.length > 1) {
+    const colMaxes = numCols.map((ci) => {
+      const vals = cleanRows.map((r) => Math.abs(parseFloat(r[ci]) || 0))
+      return Math.max(...vals)
+    })
+    const maxVal = Math.max(...colMaxes)
+    const minVal = Math.min(...colMaxes)
+    if (maxVal > 0 && minVal > 0 && maxVal / minVal > 100) {
+      const bestIdx = colMaxes.indexOf(maxVal)
+      selectedNumCols = [numCols[bestIdx]]
+    }
+  }
+
+  const chartType = selectedNumCols.length > 1
     ? 'bar'
     : cleanRows.length <= 8
       ? 'pie'
       : 'bar'
 
   return {
-    headers: headers.filter((_, i) => i === 0 || numCols.includes(i)),
-    rows: cleanRows.map((r) => r.filter((_, i) => i === 0 || numCols.includes(i))),
+    headers: headers.filter((_, i) => i === 0 || selectedNumCols.includes(i)),
+    rows: cleanRows.map((r) => r.filter((_, i) => i === 0 || selectedNumCols.includes(i))),
     chartType,
   }
 }
