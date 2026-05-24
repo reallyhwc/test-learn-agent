@@ -91,6 +91,20 @@ function newId(role) {
   return `${role}-${Date.now()}-${nextMsgId++}`
 }
 
+async function refreshMemoryCount() {
+  try {
+    const r = await fetch(
+      `/api/memory/count?userId=${encodeURIComponent(userStore.currentUser)}`,
+    )
+    if (r.ok) {
+      const d = await r.json()
+      memoryCount.value = d.count || 0
+    }
+  } catch (_) {
+    // 静默失败：UI 计数不准不致命
+  }
+}
+
 function abort() {
   if (activeController) {
     activeController.abort()
@@ -156,6 +170,7 @@ async function send() {
 
     console.timeEnd('[Agent] 总耗时')
     messages.value[assistantIdx].streaming = false
+    refreshMemoryCount()
   } catch (e) {
     if (e.name === 'AbortError') {
       console.log('[Agent] 用户中止')
