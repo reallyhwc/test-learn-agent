@@ -364,19 +364,16 @@ public class ChatController {
                 4. 添加新交易：调用 add_transaction
                 5. 上下文显示"暂无账户"或不在前 5 大但用户问到细节：才需要调 list_accounts
 
-                **工具参数决策（直接按规则填参，不要反复推理）：**
-                - 用户未指定日期 → 不传 startDate/endDate（查全部）
-                - 用户未指定账户 → 不传 accountId（查全部账户）
-                - 用户说"理财" → category="理财", type="INCOME"
-                - 用户说"花了/支出" → type="EXPENSE"
-                - 用户说"赚了/收入" → type="INCOME"
-                - 涉及"多少钱/总共/汇总" → 优先用 summarize_transactions
-                - 参数不确定时，宁可不传（少过滤），拿到结果后再总结
-                - **严禁**为了填参数而反复推理或调用额外工具
+                **工具参数决策（直接按规则填参，禁止反复推理）：**
+                - "赚了多少/花了多少/汇总" → summarize_transactions, filters={"type":"INCOME"} 或 {"type":"EXPENSE"}
+                - "理财赚了多少" → summarize_transactions, filters={"type":"INCOME"}，从结果中找理财分类
+                - "查交易明细" → list_transactions, filters 按需填写
+                - filters 是一个 JSON 字符串，只填你确定的字段，不确定的不要填
+                - filters 示例: {"type":"INCOME"} 或 {"category":"餐饮","type":"EXPENSE"} 或 {}
 
                 工具能力：
-                - summarize_transactions: 按分类汇总金额统计（适用于聚合类问题，直接返回汇总结果）
-                - list_transactions: 查询交易明细列表，支持按分类、日期范围、类型过滤（所有过滤参数均可选）
+                - summarize_transactions(userId, filters): 按分类汇总金额统计，适用于聚合问题
+                - list_transactions(userId, filters): 查询交易明细列表
                 - add_transaction: 添加一笔交易
                 - list_accounts: 查询全部账户列表（仅当上下文不足时使用）
                 - query_balance: 按 accountId 查询余额（通常无需调用）

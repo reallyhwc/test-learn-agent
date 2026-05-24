@@ -58,21 +58,24 @@ public class FinanceTools {
     }
 
     @McpTool(name = "list_transactions",
-            description = "查询交易记录明细列表。所有过滤参数均可选，不传则不过滤（返回全部记录）。"
-                    + "示例：查全部理财收入 → category='理财', type='INCOME'（其余不传）")
+            description = "查询交易记录明细列表。仅 userId 必填，其余过滤条件通过 filters JSON 传入。"
+                    + "filters 示例: {\"category\":\"理财\",\"type\":\"INCOME\"} 或 {\"startDate\":\"2026-05-01\",\"endDate\":\"2026-05-24\"}"
+                    + " filters 可用字段: startDate、endDate(yyyy-MM-dd)、category(餐饮/交通/购物/理财等)、type(INCOME/EXPENSE)、accountId")
     public Object listTransactions(
-            @McpToolParam(description = "用户ID（必填）") String userId,
-            @McpToolParam(description = "起始日期 (yyyy-MM-dd)，可选，不传则不限起始") String startDate,
-            @McpToolParam(description = "结束日期 (yyyy-MM-dd)，可选，不传则不限结束") String endDate,
-            @McpToolParam(description = "交易分类（如餐饮、交通、购物、理财等），可选，不传则不按分类过滤") String category,
-            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE，可选，不传则查询所有类型") String type,
-            @McpToolParam(description = "账户ID，可选，不传则查询所有账户") Long accountId) {
+            @McpToolParam(description = "用户ID") String userId,
+            @McpToolParam(description = "过滤条件JSON，如{\"category\":\"理财\",\"type\":\"INCOME\"}，无过滤传{}") String filters) {
         userId = validateUserId(userId);
-        log.info("listTransactions called with userId={}, startDate={}, endDate={}, category={}, type={}, accountId={}",
-                userId, startDate, endDate, category, type, accountId);
+        log.info("listTransactions called with userId={}, filters={}", userId, filters);
         long start = System.nanoTime();
 
         try {
+            Map<String, Object> filterMap = parseFilters(filters);
+            String startDate = (String) filterMap.get("startDate");
+            String endDate = (String) filterMap.get("endDate");
+            String category = (String) filterMap.get("category");
+            String type = (String) filterMap.get("type");
+            Object accountIdObj = filterMap.get("accountId");
+
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions")
                     .queryParam("userId", userId)
                     .queryParam("pageSize", 1000);
@@ -80,7 +83,7 @@ public class FinanceTools {
             if (endDate != null) uriBuilder.queryParam("endDate", endDate);
             if (category != null) uriBuilder.queryParam("category", category);
             if (type != null) uriBuilder.queryParam("type", type);
-            if (accountId != null) uriBuilder.queryParam("accountId", accountId);
+            if (accountIdObj != null) uriBuilder.queryParam("accountId", accountIdObj);
 
             java.net.URI uri = uriBuilder.build().toUri();
             log.info("listTransactions URI: {}", uri);
@@ -112,21 +115,23 @@ public class FinanceTools {
     }
 
     @McpTool(name = "summarize_transactions",
-            description = "按分类汇总交易金额统计。返回每个分类的总金额和笔数，以及合计行。"
-                    + "适用于'赚了多少''花了多少''收支汇总'类问题，无需再调 list_transactions 后自行计算。"
-                    + "示例：查理财总收入 → type='INCOME'（其余不传）")
+            description = "按分类汇总交易金额统计。返回每个分类的总金额和笔数及合计。"
+                    + "适用于'赚了多少''花了多少''收支汇总'类问题。"
+                    + "仅 userId 必填，filters 可选。示例: userId='default', filters='{\"type\":\"INCOME\"}'")
     @SuppressWarnings("unchecked")
     public Object summarizeTransactions(
-            @McpToolParam(description = "用户ID（必填）") String userId,
-            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE，可选，不传则统计所有类型") String type,
-            @McpToolParam(description = "起始日期 (yyyy-MM-dd)，可选，不传则不限起始") String startDate,
-            @McpToolParam(description = "结束日期 (yyyy-MM-dd)，可选，不传则不限结束") String endDate) {
+            @McpToolParam(description = "用户ID") String userId,
+            @McpToolParam(description = "过滤条件JSON，如{\"type\":\"INCOME\"}，无过滤传{}") String filters) {
         userId = validateUserId(userId);
-        log.info("summarizeTransactions called with userId={}, type={}, startDate={}, endDate={}",
-                userId, type, startDate, endDate);
+        log.info("summarizeTransactions called with userId={}, filters={}", userId, filters);
         long start = System.nanoTime();
 
         try {
+            Map<String, Object> filterMap = parseFilters(filters);
+            String type = (String) filterMap.get("type");
+            String startDate = (String) filterMap.get("startDate");
+            String endDate = (String) filterMap.get("endDate");
+
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions/summary")
                     .queryParam("userId", userId);
             if (type != null) uriBuilder.queryParam("type", type);
@@ -147,6 +152,19 @@ public class FinanceTools {
             recordError("summarize_transactions", e);
             log.error("汇总交易统计失败: userId={}", userId, e);
             return "汇总交易统计失败，请稍后重试";
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> parseFilters(String filters) {
+        if (filters == null || filters.isBlank() || "{}".equals(filters.trim())) {
+            return Map.of();
+        }
+        try {
+            return objectMapper.readValue(filters, Map.class);
+        } catch (Exception e) {
+            log.warn("解析 filters JSON 失败: {}", filters, e);
+            return Map.of();
         }
     }
 
