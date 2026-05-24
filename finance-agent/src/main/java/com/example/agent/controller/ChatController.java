@@ -2,9 +2,10 @@ package com.example.agent.controller;
 
 import com.example.agent.dto.ChatRequest;
 import com.example.agent.dto.ChatResponse;
+import com.example.agent.metrics.AgentMetrics;
+import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletResponse;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
 import org.springframework.ai.chat.memory.ChatMemory;
@@ -23,24 +24,29 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicLong;
 
+@Slf4j
 @RestController
 @RequestMapping("/api")
 public class ChatController {
 
-    private static final Logger log = LoggerFactory.getLogger(ChatController.class);
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
+    private final AgentMetrics agentMetrics;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
-                          ChatMemory chatMemory) {
+                          ChatMemory chatMemory,
+                          AgentMetrics agentMetrics) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
                     provider.getToolCallbacks().length);
         }
         this.chatMemory = chatMemory;
+        this.agentMetrics = agentMetrics;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -48,31 +54,43 @@ public class ChatController {
 
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) {
-        log.info("Chat request from userId={}: {}", request.getUserId(), request.getMessage());
-
         String userId = request.getUserId() != null ? request.getUserId() : "default";
+        log.info("Chat request from userId={}: {}", userId, request.getMessage());
+        agentMetrics.recordChatRequest(userId, "normal");
+
+        Timer.Sample sample = agentMetrics.startTimer();
         String systemPrompt = buildSystemPrompt(userId);
 
         var advisor = MessageChatMemoryAdvisor.builder(chatMemory)
                 .conversationId(userId)
                 .build();
 
-        String reply = chatClient.prompt()
+        var chatResponse = chatClient.prompt()
                 .system(systemPrompt)
                 .user(request.getMessage())
                 .advisors(advisor)
                 .call()
-                .content();
+                .chatResponse();
 
-        return new ChatResponse(reply);
+        agentMetrics.recordDuration(userId, sample);
+
+        var usage = chatResponse.getMetadata().getUsage();
+        if (usage != null) {
+            agentMetrics.recordTokens("deepseek-chat",
+                    usage.getPromptTokens(), usage.getCompletionTokens());
+        }
+
+        return new ChatResponse(chatResponse.getResult().getOutput().getText());
     }
 
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> chatStream(@RequestBody ChatRequest request,
                                                              HttpServletResponse response) {
-        log.info("Stream chat request from userId={}: {}", request.getUserId(), request.getMessage());
-
         String userId = request.getUserId() != null ? request.getUserId() : "default";
+        log.info("Stream chat request from userId={}: {}", userId, request.getMessage());
+        agentMetrics.recordChatRequest(userId, "stream");
+
+        Timer.Sample durationSample = agentMetrics.startTimer();
         String systemPrompt = buildSystemPrompt(userId);
 
         var advisor = MessageChatMemoryAdvisor.builder(chatMemory)
@@ -86,6 +104,11 @@ public class ChatController {
         StreamingResponseBody body = outputStream -> {
             CountDownLatch latch = new CountDownLatch(1);
 
+            AtomicBoolean firstToken = new AtomicBoolean(false);
+            Timer.Sample ttftSample = agentMetrics.startTimer();
+            AtomicLong tokenCount = new AtomicLong(0);
+            long[] startMs = {System.currentTimeMillis()};
+
             chatClient.prompt()
                     .system(systemPrompt)
                     .user(request.getMessage())
@@ -93,13 +116,27 @@ public class ChatController {
                     .stream()
                     .content()
                     .subscribe(
-                            token -> writeSseEvent(outputStream, token),
+                            token -> {
+                                if (!firstToken.getAndSet(true)) {
+                                    agentMetrics.recordTtft(userId, ttftSample);
+                                }
+                                tokenCount.incrementAndGet();
+                                writeSseEvent(outputStream, token);
+                            },
                             error -> {
                                 log.error("Stream error for userId={}: {}", userId, error.getMessage());
+                                agentMetrics.recordLlmError(error.getClass().getSimpleName());
                                 latch.countDown();
                             },
                             () -> {
-                                log.info("Stream completed for userId={}", userId);
+                                long elapsedMs = System.currentTimeMillis() - startMs[0];
+                                if (elapsedMs > 0 && tokenCount.get() > 0) {
+                                    long tps = tokenCount.get() * 1000 / elapsedMs;
+                                    agentMetrics.recordTokenSpeed(tps);
+                                    agentMetrics.recordTokens("deepseek-chat", 0, tokenCount.get());
+                                }
+                                agentMetrics.recordDuration(userId, durationSample);
+                                log.info("Stream completed for userId={}, tokens={}", userId, tokenCount.get());
                                 latch.countDown();
                             }
                     );
