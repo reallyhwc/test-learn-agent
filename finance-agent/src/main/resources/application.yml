@@ -2,6 +2,11 @@ server:
   port: 8081
 
 spring:
+  mvc:
+    async:
+      # 流式 LLM 长 tool-call 链（如多轮 list_transactions）可能 > 30s 默认上限
+      # 提到 120s 让 ChatController.latch.await(120) 真正生效
+      request-timeout: 120000
   ai:
     openai:
       api-key: ${LLM_API_KEY}

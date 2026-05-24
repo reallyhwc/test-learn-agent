@@ -161,7 +161,13 @@ public class ChatController {
                     );
 
             try {
-                latch.await(120, TimeUnit.SECONDS);
+                if (!latch.await(115, TimeUnit.SECONDS)) {
+                    // latch 超时（含工具反复调用/LLM 卡死）。比 Spring async timeout (120s) 早触发以争取写出错误
+                    log.warn("Stream timed out after 115s for userId={}", userId);
+                    writeSseError(outputStream,
+                            "AI 响应超时（>115s），可能是 tool 调用过多或 LLM 慢，请简化问题或稍后重试",
+                            clientGone);
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             } finally {
