@@ -92,7 +92,7 @@ class CsvDataStoreTest {
     @Test
     void shouldPaginateTransactionsCorrectly() {
         PageResult<Transaction> page1 = dataStore.findTransactionsPaginated(
-                null, null, null, null, "default", 1, 3);
+                null, null, null, null, null, "default", 1, 3);
         assertThat(page1.getItems()).hasSize(3);
         assertThat(page1.getPage()).isEqualTo(1);
         assertThat(page1.getTotalPages()).isGreaterThan(0);
