@@ -1,0 +1,24 @@
+spring:
+  ai:
+    openai:
+      api-key: ${LLM_API_KEY}
+      base-url: ${LLM_BASE_URL}
+      chat:
+        options:
+          model: ${LLM_MODEL:deepseek-chat}
+    mcp:
+      client:
+        type: SYNC
+        sse:
+          connections:
+            finance-mcp:
+              url: http://localhost:8082
+
+finance:
+  memory-dir: target/test-memory
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
