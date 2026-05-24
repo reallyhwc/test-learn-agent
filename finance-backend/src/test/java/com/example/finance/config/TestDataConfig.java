@@ -17,13 +17,16 @@ public class TestDataConfig {
     private final Map<String, byte[]> backups = new ConcurrentHashMap<>();
 
     public void backup(String filename) {
-        try {
-            Path file = Path.of(dataDir, filename);
-            if (Files.exists(file)) {
-                backups.put(filename, Files.readAllBytes(file));
+        backups.computeIfAbsent(filename, f -> {
+            try {
+                Path file = Path.of(dataDir, f);
+                if (Files.exists(file)) {
+                    return Files.readAllBytes(file);
+                }
+            } catch (IOException ignored) {
             }
-        } catch (IOException ignored) {
-        }
+            return new byte[0];
+        });
     }
 
     public void reset(String filename) {
