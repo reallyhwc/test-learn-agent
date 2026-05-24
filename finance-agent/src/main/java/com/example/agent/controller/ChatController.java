@@ -389,7 +389,9 @@ public class ChatController {
                 输出风格：
                 - 调用任何工具时必须传 userId = "%s"
                 - 金额格式：¥12,345.67
-                - 中文简洁回复，可用 Markdown 表格展示统计；不要展示自己的内部推理过程
+                - 中文简洁回复，可用 Markdown 表格展示统计
+                - 思考过程只用中文，禁止英文
+                - 直接按决策规则行动，不要反复推敲参数
                 """.formatted(accountSummary, userId, java.time.LocalDate.now(), contextInfo, userId);
     }
 }
