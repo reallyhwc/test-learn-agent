@@ -33,7 +33,9 @@ public class FinanceTools {
         this.registry = registry;
     }
 
-    @McpTool(name = "query_balance", description = "查询指定账户的余额")
+    @McpTool(name = "query_balance",
+            description = "按 accountId 查询单个账户余额。注意：list_accounts 返回的对象已含 balance 字段，"
+                    + "查询余额时优先用 list_accounts 一次拿全，不要重复调用此工具。")
     public BigDecimal queryBalance(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "账户ID") Long accountId) {
@@ -135,7 +137,9 @@ public class FinanceTools {
         }
     }
 
-    @McpTool(name = "list_accounts", description = "查询所有账户列表")
+    @McpTool(name = "list_accounts",
+            description = "查询用户的全部账户列表。返回字段：id、name、type、balance（实时余额）、userId。"
+                    + "balance 已包含在返回中，无需再调用 query_balance。")
     public List<AccountResponse> listAccounts(
             @McpToolParam(description = "用户ID") String userId) {
         log.info("listAccounts called with userId={}", userId);
