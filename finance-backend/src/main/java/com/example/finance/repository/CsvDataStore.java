@@ -180,13 +180,13 @@ public class CsvDataStore {
         }
     }
 
-    public List<Transaction> findTransactions(Long accountId, LocalDate date,
+    public List<Transaction> findTransactions(Long accountId, LocalDate startDate, LocalDate endDate,
                                                String category, TransactionType type, String userId) {
         dataLock.readLock().lock();
         try {
             return transactions.stream()
                     .filter(t -> accountId == null || t.getAccountId().equals(accountId))
-                    .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
+                    .filter(t -> matchDateRange(t.getDate(), startDate, endDate))
                     .filter(t -> category == null || category.equals(t.getCategory()))
                     .filter(t -> type == null || t.getType() == type)
                     .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
@@ -196,13 +196,13 @@ public class CsvDataStore {
         }
     }
 
-    public PageResult<Transaction> findTransactionsPaginated(Long accountId, LocalDate date,
+    public PageResult<Transaction> findTransactionsPaginated(Long accountId, LocalDate startDate, LocalDate endDate,
             String category, TransactionType type, String userId, int page, int pageSize) {
         dataLock.readLock().lock();
         try {
             List<Transaction> filtered = transactions.stream()
                     .filter(t -> accountId == null || t.getAccountId().equals(accountId))
-                    .filter(t -> date == null || (t.getDate() != null && t.getDate().equals(date)))
+                    .filter(t -> matchDateRange(t.getDate(), startDate, endDate))
                     .filter(t -> category == null || category.equals(t.getCategory()))
                     .filter(t -> type == null || t.getType() == type)
                     .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
@@ -248,6 +248,14 @@ public class CsvDataStore {
         } finally {
             dataLock.writeLock().unlock();
         }
+    }
+
+    private boolean matchDateRange(LocalDate txDate, LocalDate startDate, LocalDate endDate) {
+        if (startDate == null && endDate == null) return true;
+        if (txDate == null) return false;
+        if (startDate != null && txDate.isBefore(startDate)) return false;
+        if (endDate != null && txDate.isAfter(endDate)) return false;
+        return true;
     }
 
     // ---- Category operations ----

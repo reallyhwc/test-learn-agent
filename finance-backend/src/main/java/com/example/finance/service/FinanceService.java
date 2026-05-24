@@ -8,7 +8,10 @@ import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -55,21 +58,53 @@ public class FinanceService {
         return dataStore.findAccountById(accountId).map(Account::getBalance);
     }
 
-    public List<Transaction> listTransactions(String userId, Long accountId, LocalDate date,
-                                               String category, String type) {
+    public List<Transaction> listTransactions(String userId, Long accountId, LocalDate startDate,
+                                               LocalDate endDate, String category, String type) {
         TransactionType tt = parseTransactionType(type);
-        return dataStore.findTransactions(accountId, date, category, tt, userId);
+        return dataStore.findTransactions(accountId, startDate, endDate, category, tt, userId);
     }
 
-    // 切换数据库后可添加 @Cacheable("transactions")
     public PageResult<Transaction> listTransactionsPaginated(String userId, Long accountId,
-            LocalDate date, String category, String type, int page, int pageSize) {
+            LocalDate startDate, LocalDate endDate, String category, String type, int page, int pageSize) {
         TransactionType tt = parseTransactionType(type);
-        // 分页参数边界校验
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 1000) pageSize = 1000;
-        return dataStore.findTransactionsPaginated(accountId, date, category, tt, userId, page, pageSize);
+        return dataStore.findTransactionsPaginated(accountId, startDate, endDate, category, tt, userId, page, pageSize);
+    }
+
+    public List<Map<String, Object>> summarizeTransactions(String userId, String type,
+                                                            LocalDate startDate, LocalDate endDate) {
+        TransactionType tt = parseTransactionType(type);
+        List<Transaction> transactions = dataStore.findTransactions(null, startDate, endDate, null, tt, userId);
+
+        Map<String, BigDecimal> totalByCategory = new LinkedHashMap<>();
+        Map<String, Integer> countByCategory = new LinkedHashMap<>();
+
+        for (Transaction t : transactions) {
+            String category = t.getCategory() != null ? t.getCategory() : "未分类";
+            totalByCategory.merge(category, t.getAmount(), BigDecimal::add);
+            countByCategory.merge(category, 1, Integer::sum);
+        }
+
+        List<Map<String, Object>> result = new ArrayList<>();
+        BigDecimal grandTotal = BigDecimal.ZERO;
+        for (Map.Entry<String, BigDecimal> entry : totalByCategory.entrySet()) {
+            Map<String, Object> item = new LinkedHashMap<>();
+            item.put("category", entry.getKey());
+            item.put("totalAmount", entry.getValue());
+            item.put("count", countByCategory.get(entry.getKey()));
+            result.add(item);
+            grandTotal = grandTotal.add(entry.getValue());
+        }
+
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("category", "合计");
+        summary.put("totalAmount", grandTotal);
+        summary.put("count", transactions.size());
+        result.add(summary);
+
+        return result;
     }
 
     private TransactionType parseTransactionType(String type) {

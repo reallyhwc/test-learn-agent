@@ -95,7 +95,7 @@ class FinanceToolsTest {
                 .andRespond(withSuccess(responseBody, MediaType.APPLICATION_JSON));
 
         @SuppressWarnings("unchecked")
-        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", null, null, null, null);
+        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", null, null, null, null, null);
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getCategory()).isEqualTo("餐饮");
     }
@@ -106,17 +106,33 @@ class FinanceToolsTest {
                 .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
 
         @SuppressWarnings("unchecked")
-        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", null, null, null, null);
+        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", null, null, null, null, null);
         assertThat(result).isEmpty();
     }
 
     @Test
     void shouldIncludeQueryParamsInUri() {
         mockServer.expect(requestTo(
-                "http://localhost:9999/api/transactions?userId=zhangsan&pageSize=1000&date=2026-05-20&category=餐饮&type=EXPENSE"))
+                "http://localhost:9999/api/transactions?userId=zhangsan&pageSize=1000&startDate=2026-05-20&category=%E9%A4%90%E9%A5%AE&type=EXPENSE"))
                 .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
 
-        financeTools.listTransactions("zhangsan", "2026-05-20", "餐饮", "EXPENSE", null);
+        financeTools.listTransactions("zhangsan", "2026-05-20", null, "餐饮", "EXPENSE", null);
+    }
+
+    // === summarize_transactions ===
+
+    @Test
+    void shouldSummarizeTransactionsSuccessfully() {
+        String responseBody = """
+            [{"category":"理财","totalAmount":5000.00,"count":3},\
+            {"category":"合计","totalAmount":5000.00,"count":3}]""";
+        mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions/summary")))
+                .andRespond(withSuccess(responseBody, MediaType.APPLICATION_JSON));
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> result = (List<Map<String, Object>>) financeTools.summarizeTransactions("default", "INCOME", null, null);
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).get("category")).isEqualTo("理财");
     }
 
     // === add_transaction ===

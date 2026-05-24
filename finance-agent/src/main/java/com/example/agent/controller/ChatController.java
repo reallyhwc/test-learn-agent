@@ -359,15 +359,27 @@ public class ChatController {
 
                 **决策规则：**
                 1. 涉及账户、余额、账户名/类型 等基本信息：**直接读取上方"用户上下文"作答，不要调用任何工具**
-                2. 涉及交易明细、按时间/类别筛选/统计：调用 list_transactions
-                3. 添加新交易：调用 add_transaction
-                4. 上下文显示"暂无账户"或不在前 5 大但用户问到细节：才需要调 list_accounts
+                2. 涉及"赚了多少""花了多少""收支汇总"等聚合统计：调用 summarize_transactions
+                3. 涉及交易明细列表、按时间/类别筛选：调用 list_transactions
+                4. 添加新交易：调用 add_transaction
+                5. 上下文显示"暂无账户"或不在前 5 大但用户问到细节：才需要调 list_accounts
+
+                **工具参数决策（直接按规则填参，不要反复推理）：**
+                - 用户未指定日期 → 不传 startDate/endDate（查全部）
+                - 用户未指定账户 → 不传 accountId（查全部账户）
+                - 用户说"理财" → category="理财", type="INCOME"
+                - 用户说"花了/支出" → type="EXPENSE"
+                - 用户说"赚了/收入" → type="INCOME"
+                - 涉及"多少钱/总共/汇总" → 优先用 summarize_transactions
+                - 参数不确定时，宁可不传（少过滤），拿到结果后再总结
+                - **严禁**为了填参数而反复推理或调用额外工具
 
                 工具能力：
-                - list_transactions: 查询交易记录，支持按分类、日期、类型过滤
+                - summarize_transactions: 按分类汇总金额统计（适用于聚合类问题，直接返回汇总结果）
+                - list_transactions: 查询交易明细列表，支持按分类、日期范围、类型过滤（所有过滤参数均可选）
                 - add_transaction: 添加一笔交易
                 - list_accounts: 查询全部账户列表（仅当上下文不足时使用）
-                - query_balance: 按 accountId 查询余额（注意：list_accounts 返回值已含 balance，通常无需再调）
+                - query_balance: 按 accountId 查询余额（通常无需调用）
 
                 支出分类：餐饮、交通、购物、房租、娱乐、医疗、其他
                 收入分类：工资、兼职、理财

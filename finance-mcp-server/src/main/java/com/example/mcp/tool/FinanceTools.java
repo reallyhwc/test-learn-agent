@@ -57,23 +57,27 @@ public class FinanceTools {
         }
     }
 
-    @McpTool(name = "list_transactions", description = "查询交易记录列表，可按日期、分类、类型和账户过滤")
+    @McpTool(name = "list_transactions",
+            description = "查询交易记录明细列表。所有过滤参数均可选，不传则不过滤（返回全部记录）。"
+                    + "示例：查全部理财收入 → category='理财', type='INCOME'（其余不传）")
     public Object listTransactions(
-            @McpToolParam(description = "用户ID") String userId,
-            @McpToolParam(description = "交易日期 (yyyy-MM-dd)") String date,
-            @McpToolParam(description = "交易分类，如餐饮、交通、购物等") String category,
-            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
-            @McpToolParam(description = "账户ID") Long accountId) {
+            @McpToolParam(description = "用户ID（必填）") String userId,
+            @McpToolParam(description = "起始日期 (yyyy-MM-dd)，可选，不传则不限起始") String startDate,
+            @McpToolParam(description = "结束日期 (yyyy-MM-dd)，可选，不传则不限结束") String endDate,
+            @McpToolParam(description = "交易分类（如餐饮、交通、购物、理财等），可选，不传则不按分类过滤") String category,
+            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE，可选，不传则查询所有类型") String type,
+            @McpToolParam(description = "账户ID，可选，不传则查询所有账户") Long accountId) {
         userId = validateUserId(userId);
-        log.info("listTransactions called with userId={}, date={}, category={}, type={}, accountId={}",
-                userId, date, category, type, accountId);
+        log.info("listTransactions called with userId={}, startDate={}, endDate={}, category={}, type={}, accountId={}",
+                userId, startDate, endDate, category, type, accountId);
         long start = System.nanoTime();
 
         try {
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions")
                     .queryParam("userId", userId)
-                    .queryParam("pageSize", 100);
-            if (date != null) uriBuilder.queryParam("date", date);
+                    .queryParam("pageSize", 1000);
+            if (startDate != null) uriBuilder.queryParam("startDate", startDate);
+            if (endDate != null) uriBuilder.queryParam("endDate", endDate);
             if (category != null) uriBuilder.queryParam("category", category);
             if (type != null) uriBuilder.queryParam("type", type);
             if (accountId != null) uriBuilder.queryParam("accountId", accountId);
@@ -104,6 +108,45 @@ public class FinanceTools {
             recordError("list_transactions", e);
             log.error("查询交易记录失败: userId={}", userId, e);
             return "查询交易记录失败，请稍后重试";
+        }
+    }
+
+    @McpTool(name = "summarize_transactions",
+            description = "按分类汇总交易金额统计。返回每个分类的总金额和笔数，以及合计行。"
+                    + "适用于'赚了多少''花了多少''收支汇总'类问题，无需再调 list_transactions 后自行计算。"
+                    + "示例：查理财总收入 → type='INCOME'（其余不传）")
+    @SuppressWarnings("unchecked")
+    public Object summarizeTransactions(
+            @McpToolParam(description = "用户ID（必填）") String userId,
+            @McpToolParam(description = "交易类型: INCOME 或 EXPENSE，可选，不传则统计所有类型") String type,
+            @McpToolParam(description = "起始日期 (yyyy-MM-dd)，可选，不传则不限起始") String startDate,
+            @McpToolParam(description = "结束日期 (yyyy-MM-dd)，可选，不传则不限结束") String endDate) {
+        userId = validateUserId(userId);
+        log.info("summarizeTransactions called with userId={}, type={}, startDate={}, endDate={}",
+                userId, type, startDate, endDate);
+        long start = System.nanoTime();
+
+        try {
+            UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions/summary")
+                    .queryParam("userId", userId);
+            if (type != null) uriBuilder.queryParam("type", type);
+            if (startDate != null) uriBuilder.queryParam("startDate", startDate);
+            if (endDate != null) uriBuilder.queryParam("endDate", endDate);
+
+            java.net.URI uri = uriBuilder.build().toUri();
+            log.info("summarizeTransactions URI: {}", uri);
+
+            List<Map<String, Object>> result = restClient.get()
+                    .uri(uri)
+                    .retrieve()
+                    .body(List.class);
+
+            recordSuccess("summarize_transactions", start);
+            return result;
+        } catch (Exception e) {
+            recordError("summarize_transactions", e);
+            log.error("汇总交易统计失败: userId={}", userId, e);
+            return "汇总交易统计失败，请稍后重试";
         }
     }
 

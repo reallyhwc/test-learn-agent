@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @RestController
@@ -28,18 +29,28 @@ public class TransactionController {
     public PageResult<Transaction> listTransactions(
             @RequestParam(required = false, defaultValue = "default") String userId,
             @RequestParam(required = false) Long accountId,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate date,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String category,
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer pageSize) {
-        // 分页参数边界校验
         if (page == null || page < 1) page = 1;
         if (pageSize == null || pageSize < 1) pageSize = 20;
-        if (pageSize > 100) pageSize = 100;
+        if (pageSize > 1000) pageSize = 1000;
 
         log.info("GET /api/transactions userId={} page={} pageSize={}", LogMaskUtils.maskUserId(userId), page, pageSize);
-        return financeService.listTransactionsPaginated(userId, accountId, date, category, type, page, pageSize);
+        return financeService.listTransactionsPaginated(userId, accountId, startDate, endDate, category, type, page, pageSize);
+    }
+
+    @GetMapping("/summary")
+    public List<Map<String, Object>> summarizeTransactions(
+            @RequestParam(required = false, defaultValue = "default") String userId,
+            @RequestParam(required = false) String type,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
+        log.info("GET /api/transactions/summary userId={} type={}", LogMaskUtils.maskUserId(userId), type);
+        return financeService.summarizeTransactions(userId, type, startDate, endDate);
     }
 
     @PostMapping
