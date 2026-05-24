@@ -35,11 +35,13 @@ public class ChatController {
     private final ChatClient chatClient;
     private final ChatMemory chatMemory;
     private final AgentMetrics agentMetrics;
+    private final com.example.agent.context.AccountContextBuilder accountContextBuilder;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
                           ChatMemory chatMemory,
-                          AgentMetrics agentMetrics) {
+                          AgentMetrics agentMetrics,
+                          com.example.agent.context.AccountContextBuilder accountContextBuilder) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
@@ -47,6 +49,7 @@ public class ChatController {
         }
         this.chatMemory = chatMemory;
         this.agentMetrics = agentMetrics;
+        this.accountContextBuilder = accountContextBuilder;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -268,19 +271,27 @@ public class ChatController {
                 ? "当前对话记忆: " + memoryCount + " 条 / 上限 20 条"
                 : "";
 
+        // 注入账户摘要 — 简单查询直接读，避免 list_accounts/query_balance 的多轮 reasoning
+        String accountSummary = accountContextBuilder.buildSummary(userId);
+
         return """
                 你是"小财"，一个智能个人财务助手。
 
-                **关键规则：你必须通过调用工具来获取数据，绝对不能编造、猜测或使用自己的知识来回答财务问题。**
-                每次用户提问，你都要调用相应的工具查询真实数据后再回答。
+                %s
 
-                核心能力：
-                - 查询账户余额：调用 query_balance 工具
-                - 查询交易记录：调用 list_transactions 工具，支持按分类、日期、类型过滤
-                - 添加交易记录：调用 add_transaction 工具
-                - 查看所有账户：调用 list_accounts 工具
+                **决策规则：**
+                1. 涉及账户、余额、账户名/类型 等基本信息：**直接读取上方"用户上下文"作答，不要调用任何工具**
+                2. 涉及交易明细、按时间/类别筛选/统计：调用 list_transactions
+                3. 添加新交易：调用 add_transaction
+                4. 上下文显示"暂无账户"或不在前 5 大但用户问到细节：才需要调 list_accounts
 
-                支出分类：餐饮、交通、购物、房租、娱乐、医疗、教育、其他
+                工具能力：
+                - list_transactions: 查询交易记录，支持按分类、日期、类型过滤
+                - add_transaction: 添加一笔交易
+                - list_accounts: 查询全部账户列表（仅当上下文不足时使用）
+                - query_balance: 按 accountId 查询余额（注意：list_accounts 返回值已含 balance，通常无需再调）
+
+                支出分类：餐饮、交通、购物、房租、娱乐、医疗、其他
                 收入分类：工资、兼职、理财
 
                 当前信息：
@@ -288,14 +299,10 @@ public class ChatController {
                 - 日期: %s
                 - %s
 
-                工作流程：
-                1. 用户提问后，立即调用相关工具
-                2. 根据工具返回的真实数据组织回答
-                3. 调用任何工具时必须传递 userId = "%s"
-                4. 金额格式：¥12,345.67
-                5. 中文回复，简洁清晰
-
-                回复风格：使用 Markdown 表格展示统计数据，适度使用标题和强调，简洁清晰。
-                """.formatted(userId, java.time.LocalDate.now(), contextInfo, userId);
+                输出风格：
+                - 调用任何工具时必须传 userId = "%s"
+                - 金额格式：¥12,345.67
+                - 中文简洁回复，可用 Markdown 表格展示统计；不要展示自己的内部推理过程
+                """.formatted(accountSummary, userId, java.time.LocalDate.now(), contextInfo, userId);
     }
 }
