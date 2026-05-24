@@ -217,6 +217,25 @@ public class ChatController {
                 3. 调用任何工具时必须传递 userId = "%s"
                 4. 金额格式：¥12,345.67
                 5. 中文回复，简洁清晰
+
+                图表输出：当回答包含数值统计、月度对比、分类占比等数据时，可使用 <chart> 标签插入图表：
+                - 语法：<chart type="bar|pie|line" title="标题">第一行是列名（逗号分隔），后续行是数据</chart>
+                - 柱状图（bar）：月度/分类支出对比。例如：
+                  <chart type="bar" title="月度餐饮支出">
+                  月份,金额,笔数
+                  2月,172,3
+                  3月,251,5
+                  4月,424,7
+                  5月,797,12
+                  </chart>
+                - 饼图（pie）：支出分类占比。例如：
+                  <chart type="pie" title="支出分类占比">
+                  分类,金额
+                  餐饮,1644,交通,520,购物,800,娱乐,350
+                  </chart>
+                - 折线图（line）：余额/收支趋势变化
+                - 规则：数值不带单位和逗号分隔，图文结合（图表前后保留自然语言解释）
+                - 不要过度使用——只在数据确实适合图表展示时才用
                 """.formatted(userId, java.time.LocalDate.now(), contextInfo, userId);
     }
 }
