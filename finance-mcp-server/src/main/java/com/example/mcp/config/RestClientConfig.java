@@ -12,7 +12,12 @@ public class RestClientConfig {
     private String backendUrl;
 
     @Bean
-    public RestClient financeRestClient() {
-        return RestClient.create(backendUrl);
+    public RestClient.Builder restClientBuilder() {
+        return RestClient.builder().baseUrl(backendUrl);
+    }
+
+    @Bean
+    public RestClient financeRestClient(RestClient.Builder builder) {
+        return builder.build();
     }
 }
