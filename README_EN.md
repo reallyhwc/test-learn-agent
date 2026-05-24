@@ -256,7 +256,6 @@ This separation makes the MCP layer **visible and tangible**. In a real system y
 | **LLM** | DeepSeek / OpenAI / Qwen (any compatible API) | — |
 | **Monitoring** | Micrometer + Prometheus | with Spring Boot |
 | **CI/CD** | GitHub Actions (Java 17 + Node 18) | — |
-| **Containers** | Docker Compose (4 services) | — |
 
 ---
 
@@ -312,15 +311,6 @@ cd finance-agent && ./mvnw spring-boot:run         # :8081
 cd finance-frontend && npm run dev                 # :5173
 ```
 
-### Docker Compose
-
-```bash
-cp .env.example .env && vim .env    # Set API Key
-docker-compose up
-```
-
-4 containerized services, auto-sequenced with healthchecks. Backend data persisted to Docker volume.
-
 ### Environment Variables
 
 | Variable | Required | Description | Default |
@@ -359,7 +349,6 @@ Supports: **DeepSeek**, **Qwen**, **OpenAI**, **Groq**, **Moonshot**, **SiliconF
 │   └── utils/                api.js, streamParser.js, markdown.js
 │
 ├── .github/workflows/ci.yml  GitHub Actions CI
-├── docker-compose.yml        4-service containerized deployment
 ├── .env.example              LLM config template
 └── start-all.sh              One-click start (with health checks)
 ```

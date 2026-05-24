@@ -256,7 +256,6 @@ graph TB
 | **LLM** | DeepSeek / OpenAI / 通义千问 (任何兼容 API) | — |
 | **监控** | Micrometer + Prometheus | 随 Spring Boot |
 | **CI/CD** | GitHub Actions (Java 17 + Node 18) | — |
-| **容器化** | Docker Compose (4 服务) | — |
 
 ---
 
@@ -312,15 +311,6 @@ cd finance-agent && ./mvnw spring-boot:run         # :8081
 cd finance-frontend && npm run dev                 # :5173
 ```
 
-### Docker Compose 部署
-
-```bash
-cp .env.example .env && vim .env    # 配置 API Key
-docker-compose up
-```
-
-4 个服务容器化部署，自动按依赖顺序启动，含 healthcheck。Backend 数据持久化到 Docker volume。
-
 ### 环境变量
 
 | 变量 | 必填 | 说明 | 默认值 |
@@ -359,7 +349,6 @@ docker-compose up
 │   └── utils/                api.js, streamParser.js, markdown.js
 │
 ├── .github/workflows/ci.yml  GitHub Actions CI
-├── docker-compose.yml        4 服务容器化部署
 ├── .env.example              LLM 配置模板
 └── start-all.sh              一键启动 (含健康检查)
 ```
