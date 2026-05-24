@@ -64,7 +64,7 @@ sequenceDiagram
     L-->>A: Function call<br/>list_transactions(category="餐饮")
     A->>M: Invoke tool
     M->>B: GET /api/transactions?category=餐饮
-    B-->>M: PageResult&lt;Transaction&gt;
+    B-->>M: PageResult (paginated)
     M-->>A: Transaction[]
     A->>L: Real data from tool
     L-->>A: "You spent ¥1,644 on dining this month..."

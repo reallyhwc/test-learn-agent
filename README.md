@@ -64,7 +64,7 @@ sequenceDiagram
     L-->>A: Function call<br/>list_transactions(category="餐饮")
     A->>M: 调用工具
     M->>B: GET /api/transactions?category=餐饮
-    B-->>M: PageResult&lt;Transaction&gt;
+    B-->>M: PageResult (分页结果)
     M-->>A: Transaction[]
     A->>L: 工具返回的真实数据
     L-->>A: "本月餐饮支出共 ¥1,644 元..."
