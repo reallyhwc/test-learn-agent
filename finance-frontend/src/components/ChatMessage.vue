@@ -2,6 +2,18 @@
   <div class="message" :class="{ user: role === 'user', assistant: role === 'assistant' }">
     <div class="bubble" v-if="role === 'user'">{{ text }}</div>
     <template v-else>
+      <!-- LLM 思考过程：流式期间默认展开实时显示，结束后默认折叠 -->
+      <div v-if="thinking && thinking.length > 0" class="thinking-wrapper">
+        <div class="thinking-header" @click="thinkingCollapsed = !thinkingCollapsed">
+          <span class="thinking-icon">💭</span>
+          <span class="thinking-label">
+            {{ streaming ? '思考中…' : '思考过程' }}
+          </span>
+          <span class="thinking-toggle">{{ thinkingCollapsed ? '▶ 展开' : '▼ 收起' }}</span>
+        </div>
+        <div v-show="!thinkingCollapsed" class="thinking-body">{{ thinking }}</div>
+      </div>
+
       <div v-if="streaming" class="bubble streaming-text">{{ text }}</div>
       <div v-else>
         <div ref="bubbleRef" class="bubble markdown-body" v-html="rendered"></div>
@@ -33,12 +45,23 @@ import { userStore } from '../stores/userStore.js'
 const props = defineProps({
   role: { type: String, required: true },
   text: { type: String, default: '' },
+  thinking: { type: String, default: '' },
   id: { type: String, default: '' },
   streaming: { type: Boolean, default: false },
 })
 
 const bubbleRef = ref(null)
 const feedback = ref(null)
+// 流式期间默认展开（用户能看到 reasoning 实时滚动），结束后自动折叠
+const thinkingCollapsed = ref(false)
+
+watch(
+  () => props.streaming,
+  (now) => {
+    // 流刚结束 → 自动折叠思考过程，把视觉焦点放在最终答案
+    if (!now) thinkingCollapsed.value = true
+  },
+)
 
 const chartMgr = createChartManager(ChartRenderer)
 
@@ -119,9 +142,9 @@ async function submitFeedback(rating) {
 </script>
 
 <style scoped>
-.message { display: flex; margin-bottom: 8px; }
-.user { justify-content: flex-end; }
-.assistant { justify-content: flex-start; }
+.message { display: flex; flex-direction: column; margin-bottom: 8px; }
+.user { align-items: flex-end; }
+.assistant { align-items: flex-start; }
 .bubble {
   max-width: 85%; padding: 10px 14px; border-radius: 14px;
   font-size: 0.9rem; line-height: 1.6;
@@ -132,6 +155,42 @@ async function submitFeedback(rating) {
   border: 1px solid #e4e7ed; box-shadow: 0 1px 4px rgba(0,0,0,0.04);
 }
 .streaming-text { white-space: pre-wrap; word-break: break-word; }
+
+/* 思考过程折叠区 */
+.thinking-wrapper {
+  max-width: 85%;
+  margin-bottom: 6px;
+  background: #fafafa;
+  border: 1px solid #ebeef5;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  color: #909399;
+  overflow: hidden;
+}
+.thinking-header {
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+.thinking-header:hover { background: #f0f2f5; }
+.thinking-icon { font-size: 0.9rem; }
+.thinking-label { flex: 1; }
+.thinking-toggle { font-size: 0.75rem; opacity: 0.7; }
+.thinking-body {
+  padding: 8px 10px;
+  border-top: 1px dashed #ebeef5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SF Mono', 'Monaco', 'Menlo', monospace;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  max-height: 240px;
+  overflow-y: auto;
+}
 
 .markdown-body :deep(h2) { font-size: 1.1rem; margin: 12px 0 8px; padding-bottom: 6px; border-bottom: 2px solid var(--el-color-primary-light-7); }
 .markdown-body :deep(h3) { font-size: 1rem; margin: 10px 0 6px; color: #606266; }
