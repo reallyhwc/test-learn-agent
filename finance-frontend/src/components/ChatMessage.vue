@@ -26,40 +26,65 @@ const bubbleRef = ref(null)
 let chartIdCounter = 0
 const chartConfigs = new Map()
 
-function parseChartTags(html) {
-  // 宽松匹配：容忍 LLM 输出中属性间缺失空格、等号前后多余空格等情况
-  const regex = /<chart\s*type\s*=\s*"(bar|pie|line)"\s*title\s*=\s*"(.*?)"\s*>([\s\S]*?)<\/chart\s*>/g
+function extractChartBlocks(text) {
+  // 匹配 ```chart:bar / ```chart:pie / ```chart:line 代码块
+  // LLM 天然尊重代码块边界，不会压缩内部换行
+  const regex = /```chart:(bar|pie|line)\s*\n([\s\S]*?)```/g
+  const fragments = []
+  let lastIndex = 0
 
-  return html.replace(regex, (match, type, title, csvBody) => {
-    const lines = csvBody.trim().split('\n').filter(l => l.trim())
-    if (lines.length < 2) return match
+  for (const m of text.matchAll(regex)) {
+    // 代码块之前的文本
+    if (m.index > lastIndex) {
+      fragments.push({ type: 'text', content: text.slice(lastIndex, m.index) })
+    }
 
-    // 去除列名中的括号注释（如 "金额（元）" → "金额"）
-    const headers = lines[0].split(',').map(h => h.trim().replace(/（[^）]*）/g, ''))
-    const rows = lines.slice(1).map(l => {
-      const cells = l.split(',').map(c => c.trim())
-      // 解析数值时去掉非数字字符（除小数点），保留标签列原文
-      return cells.map((c, i) => {
-        if (i === 0) return c // 标签列保持原文
-        const num = parseFloat(c.replace(/[^0-9.]/g, ''))
-        return isNaN(num) ? '0' : String(num)
+    const chartType = m[1]
+    const body = m[2].trim()
+    const lines = body.split('\n').filter(l => l.trim())
+    if (lines.length >= 2) {
+      const title = lines[0].trim()
+      const headers = lines[1].split(',').map(h => h.trim().replace(/（[^）]*）/g, ''))
+      const rows = lines.slice(2).map(l => {
+        const cells = l.split(',').map(c => c.trim())
+        return cells.map((c, i) => {
+          if (i === 0) return c
+          const num = parseFloat(c.replace(/[^0-9.]/g, ''))
+          return isNaN(num) ? '0' : String(num)
+        })
       })
-    })
 
-    if (rows.length === 0) return match
+      const id = 'chart-' + (chartIdCounter++)
+      chartConfigs.set(id, { type: chartType, title, headers, rows })
+      fragments.push({ type: 'chart', id })
+    } else {
+      // 数据不足，保留原文
+      fragments.push({ type: 'text', content: m[0] })
+    }
 
-    const id = 'chart-' + (chartIdCounter++)
-    chartConfigs.set(id, { type, title, headers, rows })
-    return `<div class="chart-container" data-chart-id="${id}"></div>`
-  })
+    lastIndex = m.index + m[0].length
+  }
+
+  // 剩余文本
+  if (lastIndex < text.length) {
+    fragments.push({ type: 'text', content: text.slice(lastIndex) })
+  }
+
+  return fragments
 }
 
 const rendered = computed(() => {
   if (props.role !== 'assistant') return props.text
   chartConfigs.clear()
   chartIdCounter = 0
-  const html = marked.parse(props.text || '')
-  return parseChartTags(html)
+
+  const fragments = extractChartBlocks(props.text || '')
+  return fragments.map(f => {
+    if (f.type === 'chart') {
+      return `<div class="chart-container" data-chart-id="${f.id}"></div>`
+    }
+    return marked.parse(f.content)
+  }).join('')
 })
 
 function mountCharts() {
