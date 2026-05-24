@@ -1,10 +1,11 @@
-# Personal Finance Agent · AI 记账助手
+# Personal Finance Agent
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java 17](https://img.shields.io/badge/Java-17-orange)](https://adoptium.net/)
 [![Spring Boot 3.4](https://img.shields.io/badge/Spring_Boot-3.4-green)](https://spring.io/projects/spring-boot)
+[![Spring AI 1.1](https://img.shields.io/badge/Spring_AI-1.1-blue)](https://docs.spring.io/spring-ai/)
 [![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D)](https://vuejs.org/)
-[![Element Plus](https://img.shields.io/badge/Element_Plus-2.14-blue)](https://element-plus.org/)
+[![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF)](https://github.com/features/actions)
 
 A learning demo exploring **AI Agent** and **MCP (Model Context Protocol)** on the Java/Spring ecosystem — a personal finance tracker you can chat with.
 
@@ -14,65 +15,218 @@ A learning demo exploring **AI Agent** and **MCP (Model Context Protocol)** on t
 
 ## What Is This?
 
-A 4-service project exploring how to build AI-driven applications on the JVM. Record your daily income and expenses, then query your data through natural language conversations. The AI understands your intent, calls the right API via MCP tool invocations, and returns formatted results — with streaming output and conversation memory.
+A full-stack project with 4 independent services, exploring how to build AI-driven applications on the JVM. Record daily income and expenses, then query your data through natural language. The AI understands your intent, calls the right API via MCP tools, and returns formatted results — with **SSE streaming** and **conversation memory**.
 
 **What you'll learn from this codebase:**
 - How the MCP protocol bridges LLMs and business APIs
-- How Spring AI integrates with OpenAI-compatible models
+- How Spring AI 1.1 integrates with OpenAI-compatible models (DeepSeek, Qwen, etc.)
 - How to implement token-by-token SSE streaming from LLM to browser
 - How to organize clear boundaries in a multi-service Java project
+- How to build a comprehensive frontend + backend test suite
 
 ---
 
-## Architecture
+## System Architecture
 
 ```mermaid
 graph LR
-    Browser["Browser<br/>:5173"]
-    Frontend["Frontend<br/>Vue 3 + Element Plus"]
-    Agent["Agent :8081<br/>Spring AI<br/>MCP Client<br/>ChatMemory"]
-    MCPServer["MCP Server :8082<br/>4 Tools"]
-    Backend["Backend :8080<br/>Spring Boot<br/>CSV Storage"]
+    Browser["🌐 Browser<br/>:5173"]
+    Frontend["📱 Frontend<br/>Vue 3 + Element Plus<br/>+ ECharts"]
+    Agent["🤖 Agent :8081<br/>Spring AI 1.1<br/>MCP Client<br/>ChatMemory"]
+    LLM["🧠 LLM<br/>DeepSeek / OpenAI<br/>Compatible API"]
+    MCPServer["🔧 MCP Server :8082<br/>5 Tools<br/>@McpTool"]
+    Backend["💾 Backend :8080<br/>Spring Boot 3.4<br/>CSV Storage"]
 
     Browser --> Frontend
-    Frontend -->|"REST"| Backend
-    Frontend -->|"REST / SSE"| Agent
+    Frontend -->|"REST API"| Backend
+    Frontend -->|"SSE Stream"| Agent
+    Agent <-->|"OpenAI API"| LLM
     Agent -->|"MCP over SSE"| MCPServer
     MCPServer -->|"REST"| Backend
 ```
 
-**4 services, 1 protocol chain.** The frontend talks to both Backend (CRUD) and Agent (AI chat). When Agent needs data, it doesn't call Backend directly — it goes through MCP Server, which wraps Backend APIs as standard MCP tools.
+**4 services, 2 data paths:**
+- **CRUD path:** Frontend → Backend (direct data operations)
+- **AI path:** Frontend → Agent → LLM → MCP Server → Backend (natural language driven)
 
 ---
 
-## AI Conversation Flow
+## Agent Call Architecture
 
-What happens when a user asks *"How much did I spend on dining this month?"*:
+What happens when a user asks *"How much did I earn from investments?"*:
 
 ```mermaid
 sequenceDiagram
-    participant U as User
-    participant F as Frontend
-    participant A as Agent
-    participant L as LLM
-    participant M as MCP Server
-    participant B as Backend
+    participant U as 👤 User
+    participant F as 📱 Frontend (Vue)
+    participant A as 🤖 Agent
+    participant L as 🧠 LLM
+    participant M as 🔧 MCP Server
+    participant B as 💾 Backend
 
-    U->>F: "How much did I spend on dining this month?"
-    F->>A: POST /api/chat/stream
-    A->>L: System prompt + user message
-    L-->>A: Function call<br/>list_transactions(category="餐饮")
-    A->>M: Invoke tool
-    M->>B: GET /api/transactions?category=餐饮
-    B-->>M: PageResult (paginated)
-    M-->>A: Transaction[]
+    U->>F: "How much did I earn from investments?"
+    F->>A: POST /api/chat/stream (SSE)
+    
+    Note over A: Build System Prompt<br/>Inject account context + tool decision rules
+    A->>L: system prompt + user message + 5 tool definitions
+    
+    Note over L: Autonomous decision: aggregation query<br/>→ call summarize_transactions
+    L-->>A: Function Call:<br/>summarize_transactions<br/>filters={"type":"INCOME"}
+    
+    A->>M: MCP protocol tool invocation
+    M->>B: GET /api/transactions/summary?type=INCOME
+    B-->>M: [{category:"Investment",totalAmount:13164.35,count:13}, ...]
+    M-->>A: Summary data
+    
     A->>L: Real data from tool
-    L-->>A: "You spent ¥1,644 on dining this month..."
-    A-->>F: SSE: data: token token token...
-    F-->>U: Render Markdown
+    L-->>A: "You earned ¥13,164.35 from investments..."
+    
+    loop SSE token-by-token push
+        A-->>F: event:data → token
+    end
+    F-->>U: Markdown rendering + ECharts charts
 ```
 
-Core insight: **The LLM autonomously decides which tool to call.** No hardcoded intent matching. The system prompt tells the LLM what tools are available, and it decides when and how to use them — the essence of the Agent pattern.
+### Agent Internals
+
+```mermaid
+graph TB
+    subgraph "ChatController"
+        REQ["POST /api/chat/stream"]
+        SYS["System Prompt Builder"]
+        CTX["AccountContextBuilder<br/>Auto-inject account context<br/>30s cache"]
+        MEM["ChatMemory<br/>Conversation history (max 20 turns)"]
+        METRICS["Metrics<br/>TTFT / Token usage"]
+    end
+    
+    subgraph "Spring AI ChatClient"
+        CC["ChatClient.prompt()"]
+        TOOLS["MCP Tool Callbacks<br/>5 tools auto-registered"]
+        STREAM["Flux streaming response"]
+    end
+    
+    subgraph "SSE Output"
+        THK["event:thinking → reasoning process"]
+        MSG["event:message → final answer"]
+        ERR["event:error → error info"]
+    end
+    
+    REQ --> SYS
+    SYS --> CTX
+    SYS --> MEM
+    SYS --> CC
+    CC --> TOOLS
+    CC --> STREAM
+    STREAM --> THK
+    STREAM --> MSG
+    STREAM --> ERR
+    REQ --> METRICS
+```
+
+**Core design: The LLM autonomously decides which tool to call.** The System Prompt embeds decision rules (e.g., "use summarize_transactions for aggregation queries"), and the LLM acts accordingly — the essence of the Agent pattern.
+
+---
+
+## Finance App Design
+
+### Data Model
+
+```mermaid
+erDiagram
+    USER ||--o{ ACCOUNT : "owns"
+    ACCOUNT ||--o{ TRANSACTION : "generates"
+    
+    ACCOUNT {
+        long id PK
+        string name "Account name (Cash/Bank/...)"
+        string type "CASH / BANK / ALIPAY / WECHAT"
+        decimal balance "Real-time balance (auto-calculated)"
+        string userId "Owner"
+    }
+    
+    TRANSACTION {
+        long id PK
+        long accountId FK "Linked account"
+        string type "INCOME / EXPENSE"
+        decimal amount "Amount"
+        string category "Category (Dining/Transport/Investment/...)"
+        string note "Note"
+        date date "Date"
+        string userId "Owner"
+    }
+```
+
+### Storage Design
+
+**CSV file storage** — zero environment dependencies, clone + set Key and run:
+
+```
+finance-backend/data/
+├── accounts.csv        # id,name,type,balance,userId
+└── transactions.csv    # id,accountId,type,amount,category,note,date,userId
+```
+
+- Full data loaded into in-memory `ConcurrentHashMap` on startup
+- Atomic write via temp file + rename to prevent corruption
+- Data isolated by `userId` to simulate multi-tenancy
+
+### MCP Tool Inventory
+
+| Tool | Function | Parameters |
+|------|----------|------------|
+| **`summarize_transactions`** | Aggregate transaction amounts by category | `userId`, `filters` (JSON) |
+| **`list_transactions`** | Query transaction detail list | `userId`, `filters` (JSON) |
+| **`add_transaction`** | Add a transaction record | `userId`, `accountId`, `type`, `amount`, `category`, `note` |
+| **`list_accounts`** | List all user accounts | `userId` |
+| **`query_balance`** | Query balance by accountId | `userId`, `accountId` |
+
+> Optional parameters are passed via a `filters` JSON string (e.g., `{"type":"INCOME","category":"Investment"}`) to avoid MCP Schema required/optional ambiguity.
+
+### Backend API
+
+| Method | Path | Function |
+|--------|------|----------|
+| `GET` | `/api/accounts` | List accounts |
+| `POST` | `/api/accounts` | Create account |
+| `GET` | `/api/accounts/{id}/balance` | Query balance |
+| `GET` | `/api/transactions` | Paginated transaction query (date range/category/type filters) |
+| `GET` | `/api/transactions/summary` | Aggregate statistics by category |
+| `POST` | `/api/transactions` | Create transaction |
+| `GET` | `/api/categories` | List categories |
+
+> Integrated with SpringDoc OpenAPI — visit `http://localhost:8080/swagger-ui.html` after startup.
+
+### Frontend Components
+
+```mermaid
+graph TB
+    subgraph "App.vue — Responsive Layout"
+        direction TB
+        HEADER["AppHeader · Nav bar + User switcher"]
+        
+        subgraph "Left · Finance Area"
+            ACC["AccountList · Account list"]
+            FORM["TransactionForm · Add transaction"]
+            LIST["TransactionList · Transaction details"]
+            CHART["ChartPanel → ChartRenderer · ECharts"]
+        end
+        
+        subgraph "Right · AI Chat Area"
+            CHAT["ChatPanel · SSE stream receiver"]
+            MSG["ChatMessage · Markdown rendering"]
+        end
+    end
+    
+    HEADER --> ACC
+    ACC --> FORM
+    FORM --> LIST
+    LIST --> CHART
+    CHAT --> MSG
+```
+
+- **Mobile** auto-switches to tab mode (📊 Data / 💬 Assistant)
+- **ChatMessage** supports Markdown tables, code highlighting, XSS protection
+- **ChartRenderer** auto-detects table data and generates ECharts charts
 
 ---
 
@@ -80,49 +234,54 @@ Core insight: **The LLM autonomously decides which tool to call.** No hardcoded 
 
 You could stuff all the Java code into a single Spring Boot project. The split is intentional for learning:
 
-```mermaid
-graph TB
-    subgraph "Could Be One Process"
-        direction LR
-        A[Backend] --- M[MCP Server] --- G[Agent]
-    end
-    subgraph "Actual Deployment"
-        direction TB
-        A2[Backend :8080]
-        M2[MCP Server :8082]
-        G2[Agent :8081]
-        A2 ~~~ M2 ~~~ G2
-    end
-```
-
-**The split isn't about production best practices — it's about making each layer visible.**
-
 | Service | Responsibility | Knows AI? | Knows Business? |
 |---------|---------------|:---:|:---:|
-| Backend | Pure REST API + CSV storage | No | Yes |
-| MCP Server | Wraps REST as MCP tools | No | No (pure proxy) |
-| Agent | MCP Client + LLM orchestration | Yes | No |
-| Frontend | UI, talks to both Backend and Agent | No | No |
+| **Backend** | Pure REST API + CSV storage | ✗ | ✓ |
+| **MCP Server** | Wraps REST as MCP tools | ✗ | ✗ (pure proxy) |
+| **Agent** | MCP Client + LLM orchestration | ✓ | ✗ |
+| **Frontend** | UI, talks to both Backend and Agent | ✗ | ✗ |
 
 This separation makes the MCP layer **visible and tangible**. In a real system you'd merge MCP Server into Backend, but here you can clearly see where the protocol boundary lies.
 
 ---
 
+## Tech Stack
+
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| **Frontend** | Vue 3 + Element Plus + ECharts + Pinia | 3.5 / 2.14 / 6.1 / 3.0 |
+| **Frontend Tooling** | Vite + Vitest + ESLint | 8.0 / 4.1 / 10.4 |
+| **Backend** | Spring Boot + SpringDoc OpenAPI | 3.4.5 / 2.8.6 |
+| **AI Framework** | Spring AI + MCP Protocol | 1.1.0 |
+| **LLM** | DeepSeek / OpenAI / Qwen (any compatible API) | — |
+| **Monitoring** | Micrometer + Prometheus | with Spring Boot |
+| **CI/CD** | GitHub Actions (Java 17 + Node 18) | — |
+| **Containers** | Docker Compose (4 services) | — |
+
+---
+
 ## Design Decisions
 
-**CSV instead of a database** — Zero environment dependencies. Clone, set your LLM key, and run. No MySQL, no Docker. CSV files are debuggable with any text editor.
-
-**`.env` configuration** — One file for all LLM credentials. Spring Boot loads `.env` natively via a custom `PropertySourceLoader`, no manual `export` needed.
-
-**SSE instead of WebSocket** — Agent streams tokens to the browser via Server-Sent Events. SSE is unidirectional (server→client), perfect for LLM streaming. Simpler than WebSocket, works through HTTP proxies.
-
-**Multi-user via `userId` param** — A dropdown switches users, no real auth. But every API call and MCP tool invocation carries a `userId`, demonstrating multi-tenant data isolation without OAuth ceremony.
+| Decision | Rationale |
+|----------|-----------|
+| **CSV instead of DB** | Zero dependencies. Clone + set Key and run. CSV files debuggable with any text editor |
+| **`.env` config** | One file for LLM credentials. Spring Boot custom `PropertySourceLoader`, no manual export |
+| **SSE instead of WebSocket** | Unidirectional push fits LLM streaming. Simpler, works through HTTP proxies |
+| **`userId` param isolation** | Dropdown switches users, no real auth. Demonstrates multi-tenant data isolation |
+| **filters JSON param** | MCP `@McpToolParam` can't mark optional; merging optional params into JSON avoids LLM confusion |
+| **System Prompt decision rules** | Built-in tool selection rules (e.g., "use summarize for aggregation") reduce LLM reasoning loops |
 
 ---
 
 ## Quick Start
 
-**Requirements:** Java 17+, Node.js 18+
+### Requirements
+
+- **Java 17+** (recommended [Adoptium](https://adoptium.net/))
+- **Node.js 18+**
+- **LLM API Key** (DeepSeek / OpenAI / Qwen, etc.)
+
+### One-Click Start
 
 ```bash
 # 1. Clone
@@ -133,35 +292,44 @@ cd personal-finance-agent
 cp .env.example .env
 # Edit .env → add your API key
 
-# 2b. Activate git hooks (commit format validation + auto-push)
-git config core.hooksPath githooks
-
 # 3. Install frontend dependencies
 cd finance-frontend && npm install && cd ..
 
-# 4. One-click start
+# 4. One-click start (sequential with health checks)
 ./start-all.sh
 
 # 5. Open http://localhost:5173
 ```
 
-> **Tip:** If Maven compilation fails, check that `JAVA_HOME` points to JDK 17. `mvnw` defaults to your system Java — which may be Java 8.
+> **Tip:** If Maven compilation fails, check that `JAVA_HOME` points to JDK 17.
 
-**Manual start (4 terminal windows, easier for debugging):**
+### Manual Start (4 terminals, easier for debugging)
 
 ```bash
-# T1: Backend
-cd finance-backend && ./mvnw spring-boot:run
-
-# T2: MCP Server
-cd finance-mcp-server && ./mvnw spring-boot:run
-
-# T3: Agent
-cd finance-agent && ./mvnw spring-boot:run
-
-# T4: Frontend
-cd finance-frontend && npm run dev
+cd finance-backend && ./mvnw spring-boot:run      # :8080
+cd finance-mcp-server && ./mvnw spring-boot:run    # :8082
+cd finance-agent && ./mvnw spring-boot:run         # :8081
+cd finance-frontend && npm run dev                 # :5173
 ```
+
+### Docker Compose
+
+```bash
+cp .env.example .env && vim .env    # Set API Key
+docker-compose up
+```
+
+4 containerized services, auto-sequenced with healthchecks. Backend data persisted to Docker volume.
+
+### Environment Variables
+
+| Variable | Required | Description | Default |
+|----------|:--------:|-------------|---------|
+| `LLM_API_KEY` | ✅ | LLM API Key | — |
+| `LLM_BASE_URL` | ✅ | OpenAI-compatible API URL | `https://api.deepseek.com` |
+| `LLM_MODEL` | ✅ | Model name | `deepseek-chat` |
+
+Supports: **DeepSeek**, **Qwen**, **OpenAI**, **Groq**, **Moonshot**, **SiliconFlow**, and any OpenAI-compatible API.
 
 ---
 
@@ -169,19 +337,34 @@ cd finance-frontend && npm run dev
 
 ```
 .
-├── finance-backend/         Spring Boot · REST API · Jackson CsvMapper
-│   └── .../controller, service, repository, model
-├── finance-mcp-server/      Spring AI MCP · @McpTool · SSE transport
-│   └── .../tool/FinanceTools.java  ← 4 tools, 1 file
-├── finance-agent/           Spring AI ChatClient · MCP Client · ChatMemory
-│   └── .../controller/ChatController.java  ← /chat, /chat/stream
-├── finance-frontend/        Vue 3 · Element Plus · ECharts · SSE streaming
-│   └── src/components/      ← 7 components, 1 store
-├── .env.example             LLM config template → copy to .env
-└── start-all.sh             One-click start
+├── finance-backend/          Spring Boot 3.4 · REST API · CSV Storage
+│   ├── controller/           AccountController, TransactionController
+│   ├── service/              FinanceService (business logic + aggregation)
+│   ├── repository/           CsvDataStore (atomic writes + in-memory index)
+│   ├── exception/            GlobalExceptionHandler (unified error responses)
+│   └── util/                 XssUtils, LogMaskUtils
+│
+├── finance-mcp-server/       Spring AI MCP · @McpTool annotations
+│   └── tool/FinanceTools     5 tools, parseFilters helper
+│
+├── finance-agent/            Spring AI 1.1 · MCP Client · ChatMemory
+│   ├── controller/           ChatController (/chat/stream SSE)
+│   ├── context/              AccountContextBuilder (30s cache)
+│   ├── memory/               Conversation memory (max 20 turns)
+│   └── metrics/              AgentMetrics (TTFT, token usage)
+│
+├── finance-frontend/         Vue 3 · Element Plus · ECharts
+│   ├── components/           9 components (ChatPanel, ChartRenderer...)
+│   ├── stores/               Pinia userStore (localStorage persistence)
+│   └── utils/                api.js, streamParser.js, markdown.js
+│
+├── .github/workflows/ci.yml  GitHub Actions CI
+├── docker-compose.yml        4-service containerized deployment
+├── .env.example              LLM config template
+└── start-all.sh              One-click start (with health checks)
 ```
 
-Each module has its own `pom.xml` (Java) or `package.json` (frontend). They don't share code — communication is HTTP-only.
+Each module has its own `pom.xml` / `package.json`. No shared code — HTTP-only communication.
 
 ---
 
@@ -191,14 +374,43 @@ Each module has its own `pom.xml` (Java) or `package.json` (frontend). They don'
 You: What's my account balance?
 AI: Your default cash account balance is ¥20,273.96.
 
-You: How much did I spend on dining this month?
-AI: You spent ¥1,644 on dining this month, across 26 transactions.
+You: How much did I earn from investments?
+AI: You earned ¥13,164.35 from investments across 13 transactions.
 
 You: Record a transaction: lunch ¥50
 AI: Recorded: expense ¥50.00, category: dining, note: lunch.
 ```
 
-All queries go through the MCP tool chain. The AI never fabricates data — the system prompt requires it to always call tools for real data.
+All queries go through the MCP tool chain. The AI never fabricates data — the System Prompt requires it to always call tools for real data.
+
+---
+
+## Test Suite
+
+```
+Coverage: Backend ~46 tests + Frontend 70 tests + MCP ~16 tests
+```
+
+| Layer | Framework | Coverage |
+|-------|-----------|----------|
+| **Backend Controller** | Spring MockMvc | Account/Transaction CRUD, pagination, date range, aggregation |
+| **Backend Service** | JUnit 5 | CSV read/write, multi-user isolation, balance calculation |
+| **Backend Exceptions** | MockMvc | GlobalExceptionHandler unified responses |
+| **MCP Tools** | MockRestServiceServer | 5 tools normal/error paths, input validation, JSON fallback |
+| **Frontend Components** | Vitest + Vue Test Utils | ChatPanel, ChatMessage, TransactionForm |
+| **Frontend Store** | Vitest | Pinia userStore persistence, user switching |
+| **Frontend Utils** | Vitest | API wrapper, SSE stream parsing, Markdown rendering, chart extraction |
+| **CI** | GitHub Actions | Automated tests + ESLint + coverage + OWASP security scan |
+
+Run tests:
+```bash
+# Frontend
+cd finance-frontend && npx vitest run
+
+# Backend (including MCP Server)
+cd finance-backend && ./mvnw verify
+cd finance-mcp-server && ./mvnw verify
+```
 
 ---
 
@@ -222,17 +434,20 @@ Add this to `claude_desktop_config.json` and Claude Desktop can directly query y
 
 ## FAQ
 
-**Can I use other LLMs?** Yes. Edit `.env` to switch — any OpenAI-compatible API works (OpenAI, DeepSeek, Qwen, Groq, Moonshot, SiliconFlow, etc.).
+**Can I use other LLMs?** Yes. Edit `.env` to switch — any OpenAI-compatible API works.
 
 **Port already in use?**
 ```bash
-lsof -ti:8080 | xargs kill -9  # Backend
-lsof -ti:8081 | xargs kill -9  # Agent
-lsof -ti:8082 | xargs kill -9  # MCP Server
-lsof -ti:5173 | xargs kill -9  # Frontend
+lsof -ti:8080,8081,8082,5173 | xargs kill -9
 ```
 
 **How to reset data?** `rm -rf finance-backend/data`
+
+**Where's the Swagger docs?** Start Backend, then visit `http://localhost:8080/swagger-ui.html`
+
+**Health checks?** Each service exposes Actuator: `http://localhost:{port}/actuator/health`
+
+---
 
 ## License
 
