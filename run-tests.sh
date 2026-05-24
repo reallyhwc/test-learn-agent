@@ -1,8 +1,18 @@
 #!/bin/bash
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
+
+# 确保使用 Java 17
+if [ -z "$JAVA_HOME" ]; then
+    if [ -d "/usr/local/opt/openjdk@17" ]; then
+        export JAVA_HOME="/usr/local/opt/openjdk@17"
+    elif [ -d "/opt/homebrew/opt/openjdk@17" ]; then
+        export JAVA_HOME="/opt/homebrew/opt/openjdk@17"
+    fi
+fi
+export PATH="$JAVA_HOME/bin:$PATH"
 
 RETRY_COUNT=3
 SKIP_AI=false
@@ -33,11 +43,16 @@ run_maven_test() {
     local label=$2
     echo -e "${YELLOW}[测试] $label ($module)${NC}"
     cd "$SCRIPT_DIR/$module"
-    if ./mvnw test -q 2>&1 | tail -20; then
+    local log=$(mktemp)
+    if ./mvnw test -q > "$log" 2>&1; then
+        tail -5 "$log"
+        rm "$log"
         echo -e "${GREEN}[通过] $label${NC}"
         ((pass_count++)) || true
         return 0
     else
+        tail -20 "$log"
+        rm "$log"
         echo -e "${RED}[失败] $label${NC}"
         ((fail_count++)) || true
         return 1
@@ -61,7 +76,7 @@ if [[ "$LAYER" == "all" || "$LAYER" == "agent" ]]; then
         echo "========== Layer 3: Agent AI 测试 =========="
 
         # 检查 .env
-        if [ ! -f ".env" ]; then
+        if [ ! -f "$SCRIPT_DIR/.env" ]; then
             echo -e "${YELLOW}[跳过] 未找到 .env 文件，跳过 AI 测试${NC}"
             ((skip_count++)) || true
         else
@@ -75,7 +90,10 @@ if [[ "$LAYER" == "all" || "$LAYER" == "agent" ]]; then
             for i in $(seq 1 $RETRY_COUNT); do
                 echo -e "${YELLOW}[Agent 测试] 第 $i/$RETRY_COUNT 次尝试${NC}"
 
-                if ./mvnw test -q 2>&1; then
+                agent_log=$(mktemp)
+                if ./mvnw test -q > "$agent_log" 2>&1; then
+                    tail -5 "$agent_log"
+                    rm "$agent_log"
                     echo -e "${GREEN}[通过] Agent AI 测试 (第 ${i} 次)${NC}"
                     ((pass_count++)) || true
                     break
@@ -84,6 +102,8 @@ if [[ "$LAYER" == "all" || "$LAYER" == "agent" ]]; then
                         echo -e "${YELLOW}[重试] AI 测试失败，5 秒后重试...${NC}"
                         sleep 5
                     else
+                        tail -20 "$agent_log"
+                        rm "$agent_log"
                         echo -e "${RED}[失败] Agent AI 测试，已重试 ${RETRY_COUNT} 次${NC}"
                         echo "失败详情见: finance-agent/target/surefire-reports/"
                         ((fail_count++)) || true
