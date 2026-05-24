@@ -1,14 +1,17 @@
 /**
  * 创建一个 SSE buffer。feed(chunk) 输入一段 stream chunk，
  * 返回从 buffer 里能解析出的完整 event 数组：
- *   Array<{ type: 'data' | 'error', payload: string }>
+ *   Array<{ type: 'data' | 'error' | 'thinking', payload: string }>
  *
  * 协议：
  * - 默认 event 类型为 'data'
- * - `event:error` 字段把当前 event 类型标记为 'error'
+ * - `event:error` 字段标记为 'error' 类型
+ * - `event:thinking` 字段标记为 'thinking' 类型（LLM reasoning 过程）
  * - 一个 event 内多个 data: 行用 \n 拼接（W3C SSE spec）
  * - id: / : (comment) 全部忽略
  */
+const EVENT_TYPES = new Set(['data', 'error', 'thinking'])
+
 export function createStreamBuffer() {
   let buffer = ''
   return {
@@ -26,7 +29,7 @@ export function createStreamBuffer() {
             dataLines.push(line.slice(5))
           } else if (line.startsWith('event:')) {
             const evt = line.slice(6).trim()
-            if (evt === 'error') type = 'error'
+            if (EVENT_TYPES.has(evt)) type = evt
           }
         }
         if (dataLines.length > 0) {

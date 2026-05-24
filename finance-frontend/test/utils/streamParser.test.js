@@ -110,4 +110,31 @@ describe('createStreamBuffer', () => {
       { type: 'data', payload: 'x' },
     ])
   })
+
+  it('event:thinking 标记为 thinking 类型', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('event:thinking\ndata:正在分析\n\n')).toEqual([
+      { type: 'thinking', payload: '正在分析' },
+    ])
+  })
+
+  it('thinking event multi-data 也合并', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('event:thinking\ndata:Step1\ndata:Step2\n\n')).toEqual([
+      { type: 'thinking', payload: 'Step1\nStep2' },
+    ])
+  })
+
+  it('thinking → data 混合（典型 LLM 流式输出）', () => {
+    const buf = createStreamBuffer()
+    const sseText =
+      'event:thinking\ndata:思考中\n\n' +
+      'event:thinking\ndata:分析问题\n\n' +
+      'data:这是答案\n\n'
+    expect(buf.feed(sseText)).toEqual([
+      { type: 'thinking', payload: '思考中' },
+      { type: 'thinking', payload: '分析问题' },
+      { type: 'data', payload: '这是答案' },
+    ])
+  })
 })
