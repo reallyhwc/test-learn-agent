@@ -70,7 +70,7 @@ class FinanceToolsTest {
         mockServer.expect(requestTo("http://localhost:9999/api/accounts/1/balance"))
                 .andRespond(withSuccess("12345.67", MediaType.APPLICATION_JSON));
 
-        BigDecimal result = financeTools.queryBalance("default", 1L);
+        BigDecimal result = (BigDecimal) financeTools.queryBalance("default", 1L);
         assertThat(result).isEqualByComparingTo(new BigDecimal("12345.67"));
     }
 
@@ -94,7 +94,8 @@ class FinanceToolsTest {
         mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
                 .andRespond(withSuccess(responseBody, MediaType.APPLICATION_JSON));
 
-        List<TransactionResponse> result = financeTools.listTransactions("default", null, null, null, null);
+        @SuppressWarnings("unchecked")
+        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", null, null, null, null);
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getCategory()).isEqualTo("餐饮");
     }
@@ -104,7 +105,8 @@ class FinanceToolsTest {
         mockServer.expect(requestTo(startsWith("http://localhost:9999/api/transactions")))
                 .andRespond(withSuccess("{\"items\":[],\"total\":0}", MediaType.APPLICATION_JSON));
 
-        List<TransactionResponse> result = financeTools.listTransactions("default", null, null, null, null);
+        @SuppressWarnings("unchecked")
+        List<TransactionResponse> result = (List<TransactionResponse>) financeTools.listTransactions("default", null, null, null, null);
         assertThat(result).isEmpty();
     }
 
@@ -125,7 +127,8 @@ class FinanceToolsTest {
                 .andExpect(method(HttpMethod.POST))
                 .andRespond(withSuccess("{\"id\":100,\"accountId\":1}", MediaType.APPLICATION_JSON));
 
-        Map<String, Object> result = financeTools.addTransaction("default", 1L, "EXPENSE",
+        @SuppressWarnings("unchecked")
+        Map<String, Object> result = (Map<String, Object>) financeTools.addTransaction("default", 1L, "EXPENSE",
                 new BigDecimal("50"), "餐饮", "午餐");
         assertThat(result).containsKey("id");
     }
@@ -139,7 +142,8 @@ class FinanceToolsTest {
                         "[{\"id\":1,\"name\":\"现金\",\"type\":\"CASH\",\"balance\":10000}]",
                         MediaType.APPLICATION_JSON));
 
-        List<AccountResponse> result = financeTools.listAccounts("default");
+        @SuppressWarnings("unchecked")
+        List<AccountResponse> result = (List<AccountResponse>) financeTools.listAccounts("default");
         assertThat(result).hasSize(1);
         assertThat(result.get(0).getName()).isEqualTo("现金");
     }
@@ -149,7 +153,8 @@ class FinanceToolsTest {
         mockServer.expect(requestTo("http://localhost:9999/api/accounts?userId=nobody"))
                 .andRespond(withSuccess("[]", MediaType.APPLICATION_JSON));
 
-        List<AccountResponse> result = financeTools.listAccounts("nobody");
+        @SuppressWarnings("unchecked")
+        List<AccountResponse> result = (List<AccountResponse>) financeTools.listAccounts("nobody");
         assertThat(result).isEmpty();
     }
 }
