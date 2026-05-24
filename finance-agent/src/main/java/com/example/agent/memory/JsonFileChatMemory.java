@@ -1,10 +1,10 @@
 package com.example.agent.memory;
 
+import com.example.agent.metrics.AgentMetrics;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
@@ -18,23 +18,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
+@Slf4j
 public class JsonFileChatMemory implements ChatMemory {
-
-    private static final Logger log = LoggerFactory.getLogger(JsonFileChatMemory.class);
     private static final int DEFAULT_MAX_MESSAGES = 20;
 
     private final Map<String, List<Message>> store = new ConcurrentHashMap<>();
     private final ObjectMapper objectMapper;
     private final String dataDir;
     private final int maxMessages;
+    private final AgentMetrics agentMetrics;
 
     public JsonFileChatMemory(String dataDir) {
-        this(dataDir, DEFAULT_MAX_MESSAGES);
+        this(dataDir, DEFAULT_MAX_MESSAGES, null);
     }
 
-    public JsonFileChatMemory(String dataDir, int maxMessages) {
+    public JsonFileChatMemory(String dataDir, int maxMessages, AgentMetrics agentMetrics) {
         this.dataDir = dataDir;
         this.maxMessages = maxMessages;
+        this.agentMetrics = agentMetrics;
         this.objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
         new File(dataDir).mkdirs();
     }
@@ -73,6 +74,19 @@ public class JsonFileChatMemory implements ChatMemory {
             messages.remove(0);
         }
         persistToFile(conversationId, messages);
+
+        // 更新 Context 监控指标
+        if (agentMetrics != null) {
+            List<Message> currentMessages = store.get(conversationId);
+            if (currentMessages != null) {
+                int count;
+                synchronized (currentMessages) {
+                    count = currentMessages.size();
+                }
+                long fileSize = getFile(conversationId).length();
+                agentMetrics.updateMemoryGauge(conversationId, count, fileSize);
+            }
+        }
     }
 
     private List<Message> loadFromFile(String conversationId) {

@@ -186,6 +186,11 @@ public class ChatController {
     }
 
     private String buildSystemPrompt(String userId) {
+        int memoryCount = chatMemory.get(userId).size();
+        String contextInfo = memoryCount > 0
+                ? "当前对话记忆: " + memoryCount + " 条 / 上限 20 条"
+                : "";
+
         return """
                 你是"小财"，一个智能个人财务助手。
 
@@ -204,6 +209,7 @@ public class ChatController {
                 当前信息：
                 - 用户ID: %s
                 - 日期: %s
+                - %s
 
                 工作流程：
                 1. 用户提问后，立即调用相关工具
@@ -211,6 +217,6 @@ public class ChatController {
                 3. 调用任何工具时必须传递 userId = "%s"
                 4. 金额格式：¥12,345.67
                 5. 中文回复，简洁清晰
-                """.formatted(userId, java.time.LocalDate.now(), userId);
+                """.formatted(userId, java.time.LocalDate.now(), contextInfo, userId);
     }
 }
