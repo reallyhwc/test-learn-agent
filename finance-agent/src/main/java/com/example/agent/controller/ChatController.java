@@ -106,13 +106,14 @@ public class ChatController {
 
         StreamingResponseBody body = outputStream -> {
             CountDownLatch latch = new CountDownLatch(1);
+            AtomicBoolean clientGone = new AtomicBoolean(false);
 
             AtomicBoolean firstToken = new AtomicBoolean(false);
             Timer.Sample ttftSample = agentMetrics.startTimer();
             AtomicLong tokenCount = new AtomicLong(0);
             long[] startMs = {System.currentTimeMillis()};
 
-            chatClient.prompt()
+            var subscription = chatClient.prompt()
                     .system(systemPrompt)
                     .user(request.getMessage())
                     .advisors(advisor)
@@ -120,15 +121,20 @@ public class ChatController {
                     .content()
                     .subscribe(
                             token -> {
+                                if (clientGone.get()) return;
                                 if (!firstToken.getAndSet(true)) {
                                     agentMetrics.recordTtft(userId, ttftSample);
                                 }
                                 tokenCount.incrementAndGet();
-                                writeSseEvent(outputStream, token);
+                                writeSseData(outputStream, token, clientGone);
                             },
                             error -> {
-                                log.error("Stream error for userId={}: {}", userId, error.getMessage());
+                                String msg = error.getMessage() != null
+                                        ? error.getMessage()
+                                        : error.getClass().getSimpleName();
+                                log.error("Stream error for userId={}: {}", userId, msg, error);
                                 agentMetrics.recordLlmError(error.getClass().getSimpleName());
+                                writeSseError(outputStream, "AI 服务异常：" + msg, clientGone);
                                 latch.countDown();
                             },
                             () -> {
@@ -137,8 +143,16 @@ public class ChatController {
                                     long tps = tokenCount.get() * 1000 / elapsedMs;
                                     agentMetrics.recordTokenSpeed(tps);
                                     agentMetrics.recordTokens("deepseek-chat", 0, tokenCount.get());
-                                writeTokenUsage(userId, 0, tokenCount.get(),
-                                        "deepseek-chat", System.currentTimeMillis() - startMs[0], true);
+                                    writeTokenUsage(userId, 0, tokenCount.get(),
+                                            "deepseek-chat", System.currentTimeMillis() - startMs[0], true);
+                                } else if (tokenCount.get() == 0 && !clientGone.get()) {
+                                    // Spring AI 对部分 LLM 4xx (API key/模型/限流) 走 onComplete 而非 onError
+                                    // 前端会显示空气泡，主动发 event:error 让用户感知
+                                    log.warn("Stream completed with 0 tokens for userId={}, treating as error", userId);
+                                    agentMetrics.recordLlmError("EmptyResponse");
+                                    writeSseError(outputStream,
+                                            "AI 服务返回空响应（可能是 API key 失效、模型不可用或上游限流，请稍后重试或检查 .env 配置）",
+                                            clientGone);
                                 }
                                 agentMetrics.recordDuration(userId, durationSample);
                                 log.info("Stream completed for userId={}, tokens={}", userId, tokenCount.get());
@@ -150,6 +164,9 @@ public class ChatController {
                 latch.await(120, TimeUnit.SECONDS);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
+            } finally {
+                // 客户端断开或 stream 结束后取消上游 LLM 订阅，及时释放资源
+                subscription.dispose();
             }
         };
 
@@ -158,16 +175,31 @@ public class ChatController {
                 .body(body);
     }
 
-    private void writeSseEvent(OutputStream out, String token) {
+    private void writeSseData(OutputStream out, String token, AtomicBoolean clientGone) {
+        if (clientGone.get()) return;
         try {
             // SSE spec: payload 内的 \n 必须每行加 data: 前缀，浏览器解析时再用 \n 拼回。
-            // 之前 token 内含 \n（如 markdown 表格行）会破坏 event 边界，前端只收到 \n 之前的内容。
             String escaped = token.replace("\n", "\ndata:");
-            String sse = "data:" + escaped + "\n\n";
-            out.write(sse.getBytes(StandardCharsets.UTF_8));
+            out.write(("data:" + escaped + "\n\n").getBytes(StandardCharsets.UTF_8));
             out.flush();
         } catch (IOException e) {
-            log.error("SSE write error: {}", e.getMessage());
+            // Response not usable / Broken pipe → 客户端已断，标记并停止重试避免日志刷屏
+            if (clientGone.compareAndSet(false, true)) {
+                log.warn("SSE client disconnected: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void writeSseError(OutputStream out, String message, AtomicBoolean clientGone) {
+        if (clientGone.get()) return;
+        try {
+            String escaped = message.replace("\n", "\ndata:");
+            out.write(("event:error\ndata:" + escaped + "\n\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        } catch (IOException e) {
+            if (clientGone.compareAndSet(false, true)) {
+                log.warn("SSE client disconnected during error write: {}", e.getMessage());
+            }
         }
     }
 
