@@ -56,6 +56,7 @@ public class ChatController {
     public ChatResponse chat(@RequestBody ChatRequest request) {
         String userId = request.getUserId() != null ? request.getUserId() : "default";
         log.info("Chat request from userId={}: {}", userId, request.getMessage());
+        long startMs = System.currentTimeMillis();
         agentMetrics.recordChatRequest(userId, "normal");
 
         Timer.Sample sample = agentMetrics.startTimer();
@@ -78,6 +79,8 @@ public class ChatController {
         if (usage != null) {
             agentMetrics.recordTokens("deepseek-chat",
                     usage.getPromptTokens(), usage.getCompletionTokens());
+            writeTokenUsage(userId, usage.getPromptTokens(), usage.getCompletionTokens(),
+                    "deepseek-chat", System.currentTimeMillis() - startMs, false);
         }
 
         return new ChatResponse(chatResponse.getResult().getOutput().getText());
@@ -134,6 +137,8 @@ public class ChatController {
                                     long tps = tokenCount.get() * 1000 / elapsedMs;
                                     agentMetrics.recordTokenSpeed(tps);
                                     agentMetrics.recordTokens("deepseek-chat", 0, tokenCount.get());
+                                writeTokenUsage(userId, 0, tokenCount.get(),
+                                        "deepseek-chat", System.currentTimeMillis() - startMs[0], true);
                                 }
                                 agentMetrics.recordDuration(userId, durationSample);
                                 log.info("Stream completed for userId={}, tokens={}", userId, tokenCount.get());
@@ -160,6 +165,23 @@ public class ChatController {
             out.flush();
         } catch (IOException e) {
             log.error("SSE write error: {}", e.getMessage());
+        }
+    }
+
+    private void writeTokenUsage(String userId, long inputTokens, long outputTokens,
+                                 String model, long durationMs, boolean stream) {
+        try {
+            new java.io.File("data").mkdirs();
+            String record = String.format(
+                    "{\"timestamp\":\"%s\",\"userId\":\"%s\",\"inputTokens\":%d,\"outputTokens\":%d,\"model\":\"%s\",\"durationMs\":%d,\"stream\":%b}\n",
+                    java.time.LocalDateTime.now().toString(),
+                    userId, inputTokens, outputTokens, model, durationMs, stream);
+            java.nio.file.Files.writeString(
+                    java.nio.file.Path.of("data", "token-usage.jsonl"),
+                    record,
+                    java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.APPEND);
+        } catch (java.io.IOException e) {
+            log.warn("Failed to write token usage: {}", e.getMessage());
         }
     }
 
