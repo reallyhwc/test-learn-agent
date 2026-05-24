@@ -10,6 +10,7 @@
         :key="m.id"
         :role="m.role"
         :text="m.text"
+        :thinking="m.thinking"
         :id="m.id"
         :streaming="m.streaming"
       />
@@ -119,7 +120,13 @@ async function send() {
   input.value = ''
 
   messages.value.push({ id: newId('user'), role: 'user', text, streaming: false })
-  const assistantMsg = { id: newId('assistant'), role: 'assistant', text: '', streaming: true }
+  const assistantMsg = {
+    id: newId('assistant'),
+    role: 'assistant',
+    text: '',
+    thinking: '',
+    streaming: true,
+  }
   messages.value.push(assistantMsg)
   const assistantIdx = messages.value.length - 1
 
@@ -161,6 +168,9 @@ async function send() {
             (messages.value[assistantIdx].text || '') +
             (messages.value[assistantIdx].text ? '\n\n' : '') +
             `⚠️ ${evt.payload}`
+        } else if (evt.type === 'thinking') {
+          messages.value[assistantIdx].thinking =
+            (messages.value[assistantIdx].thinking || '') + evt.payload
         } else {
           messages.value[assistantIdx].text += evt.payload
         }
