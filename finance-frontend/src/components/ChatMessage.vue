@@ -1,20 +1,49 @@
 <template>
   <div class="message" :class="{ user: role === 'user', assistant: role === 'assistant' }">
     <div class="bubble" v-if="role === 'user'">{{ text }}</div>
-    <div class="bubble markdown-body" v-else v-html="rendered"></div>
+    <div v-else>
+      <div class="bubble markdown-body" v-html="rendered"></div>
+      <div class="feedback-actions" v-if="text && text.length > 0">
+        <span class="feedback-btn" :class="{ active: feedback === 'positive' }"
+              @click="submitFeedback('positive')">👍</span>
+        <span class="feedback-btn" :class="{ active: feedback === 'negative' }"
+              @click="submitFeedback('negative')">👎</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { marked } from 'marked'
+import { userStore } from '../stores/userStore.js'
 
-const props = defineProps({ role: String, text: String })
+const props = defineProps({ role: String, text: String, id: String })
 
 const rendered = computed(() => {
   if (props.role !== 'assistant') return props.text
   return marked.parse(props.text || '')
 })
+
+const feedback = ref(null)
+
+async function submitFeedback(rating) {
+  if (feedback.value) return
+  feedback.value = rating
+  try {
+    await fetch('/api/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        userId: userStore.currentUser,
+        messageId: props.id,
+        rating: rating
+      })
+    })
+  } catch (e) {
+    console.error('[Agent] Feedback error:', e)
+  }
+}
 </script>
 
 <style scoped>
@@ -34,4 +63,8 @@ const rendered = computed(() => {
 .markdown-body :deep(strong) { font-weight: 600; }
 .markdown-body :deep(ul), .markdown-body :deep(ol) { padding-left: 20px; margin: 4px 0; }
 .markdown-body :deep(p) { margin: 4px 0; }
+.feedback-actions { margin-top: 4px; text-align: right; }
+.feedback-btn { cursor: pointer; margin-left: 8px; opacity: 0.4; font-size: 0.85rem; user-select: none; }
+.feedback-btn:hover { opacity: 0.8; }
+.feedback-btn.active { opacity: 1; }
 </style>

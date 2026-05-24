@@ -1,8 +1,11 @@
 <template>
   <div class="chat-panel">
-    <div class="chat-header">AI 助手</div>
+    <div class="chat-header">
+      AI 助手
+      <span class="memory-info" v-if="memoryCount > 0">记忆: {{ memoryCount }}/20 条</span>
+    </div>
     <div class="chat-messages" ref="msgContainer">
-      <ChatMessage v-for="(m, i) in messages" :key="i" :role="m.role" :text="m.text" />
+      <ChatMessage v-for="(m, i) in messages" :key="i" :role="m.role" :text="m.text" :id="m.id" />
       <div v-if="thinking && !messages.length" class="thinking">思考中...</div>
       <div v-if="thinking && messages.length && messages[messages.length-1].role === 'assistant'" class="streaming-dot"></div>
     </div>
@@ -22,6 +25,7 @@ const messages = ref([])
 const input = ref('')
 const thinking = ref(false)
 const msgContainer = ref(null)
+const memoryCount = ref(0)
 
 // Auto-scroll to bottom when messages change
 watch(() => messages.value.length, () => {
@@ -35,11 +39,14 @@ watch(() => messages.value.length, () => {
 async function send() {
   if (!input.value.trim() || thinking.value) return
   const text = input.value
+  console.time('[Agent] 总耗时')
   input.value = ''
   messages.value.push({ role: 'user', text })
   const assistantIdx = messages.value.length
-  messages.value.push({ role: 'assistant', text: '' })
+  messages.value.push({ role: 'assistant', text: '', id: 'msg-' + Date.now() })
   thinking.value = true
+  const requestStart = performance.now()
+  let firstToken = false
 
   try {
     const res = await fetch(`/api/chat/stream`, {
@@ -63,6 +70,11 @@ async function send() {
         if (line.startsWith('data:')) {
           const payload = line.slice(5)
           const content = payload.startsWith(' ') ? payload.slice(1) : payload
+          if (!firstToken) {
+            firstToken = true
+            const ttft = performance.now() - requestStart
+            console.log('[Agent] TTFT:', Math.round(ttft) + 'ms')
+          }
           for (const ch of content) {
             messages.value[assistantIdx].text += ch
             if (msgContainer.value) {
@@ -73,7 +85,10 @@ async function send() {
         }
       }
     }
+    console.timeEnd('[Agent] 总耗时')
+    memoryCount.value = messages.value.filter(m => m.role === 'user').length * 2
   } catch (e) {
+    console.error('[Agent] Error:', e)
     if (!messages.value[assistantIdx]?.text) {
       messages.value[assistantIdx].text = '抱歉，服务暂时不可用'
     }
@@ -98,6 +113,12 @@ async function send() {
 .chat-input {
   display: flex; padding: 12px; gap: 0;
   border-top: 1px solid var(--el-border-color-light);
+}
+.memory-info {
+  float: right;
+  font-size: 0.8rem;
+  color: var(--el-text-color-secondary);
+  font-weight: normal;
 }
 .thinking { color: var(--el-text-color-secondary); font-size: 0.85rem; font-style: italic; padding: 8px; }
 .streaming-dot {
