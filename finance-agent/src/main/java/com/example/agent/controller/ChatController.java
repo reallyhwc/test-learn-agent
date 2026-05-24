@@ -118,15 +118,38 @@ public class ChatController {
                     .user(request.getMessage())
                     .advisors(advisor)
                     .stream()
-                    .content()
+                    .chatResponse()
                     .subscribe(
-                            token -> {
+                            chatResponse -> {
                                 if (clientGone.get()) return;
-                                if (!firstToken.getAndSet(true)) {
+                                var gen = chatResponse.getResult();
+                                if (gen == null) return;
+                                var msg = gen.getOutput();
+                                if (msg == null) return;
+
+                                // Spring AI 把 reasoning_content 放在 AssistantMessage.metadata 里
+                                Object reasoningObj = msg.getMetadata() != null
+                                        ? msg.getMetadata().get("reasoningContent")
+                                        : null;
+                                String reasoning = reasoningObj != null ? reasoningObj.toString() : null;
+                                String text = msg.getText();
+
+                                // 任意一个非空都算"开始响应"，记录 TTFT（应 < 1s）
+                                boolean hasReasoning = reasoning != null && !reasoning.isEmpty();
+                                boolean hasText = text != null && !text.isEmpty();
+                                if ((hasReasoning || hasText) && !firstToken.getAndSet(true)) {
                                     agentMetrics.recordTtft(userId, ttftSample);
                                 }
-                                tokenCount.incrementAndGet();
-                                writeSseData(outputStream, token, clientGone);
+
+                                // reasoning 走独立 channel：event:thinking
+                                if (hasReasoning) {
+                                    writeSseThinking(outputStream, reasoning, clientGone);
+                                }
+                                // 真正的回答走默认 channel
+                                if (hasText) {
+                                    tokenCount.incrementAndGet();
+                                    writeSseData(outputStream, text, clientGone);
+                                }
                             },
                             error -> {
                                 String msg = error.getMessage() != null
@@ -192,6 +215,19 @@ public class ChatController {
             // Response not usable / Broken pipe → 客户端已断，标记并停止重试避免日志刷屏
             if (clientGone.compareAndSet(false, true)) {
                 log.warn("SSE client disconnected: {}", e.getMessage());
+            }
+        }
+    }
+
+    private void writeSseThinking(OutputStream out, String token, AtomicBoolean clientGone) {
+        if (clientGone.get()) return;
+        try {
+            String escaped = token.replace("\n", "\ndata:");
+            out.write(("event:thinking\ndata:" + escaped + "\n\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        } catch (IOException e) {
+            if (clientGone.compareAndSet(false, true)) {
+                log.warn("SSE client disconnected during thinking write: {}", e.getMessage());
             }
         }
     }
