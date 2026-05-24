@@ -27,6 +27,13 @@ const thinking = ref(false)
 const msgContainer = ref(null)
 const memoryCount = ref(0)
 
+// 切换用户时清空对话
+watch(() => userStore.currentUser, () => {
+  messages.value = []
+  memoryCount.value = 0
+  thinking.value = false
+})
+
 // Auto-scroll to bottom when messages change
 watch(() => messages.value.length, () => {
   nextTick(() => {
