@@ -59,48 +59,62 @@ public class FinanceService {
     }
 
     public List<Transaction> listTransactions(String userId, Long accountId, LocalDate startDate,
-                                               LocalDate endDate, String category, String type) {
+                                               LocalDate endDate, String category,
+                                               String subCategory, String type) {
         TransactionType tt = parseTransactionType(type);
-        return dataStore.findTransactions(accountId, startDate, endDate, category, tt, userId);
+        return dataStore.findTransactions(accountId, startDate, endDate, category, subCategory, tt, userId);
     }
 
     public PageResult<Transaction> listTransactionsPaginated(String userId, Long accountId,
-            LocalDate startDate, LocalDate endDate, String category, String type, int page, int pageSize) {
+            LocalDate startDate, LocalDate endDate, String category, String subCategory,
+            String type, int page, int pageSize) {
         TransactionType tt = parseTransactionType(type);
         if (page < 1) page = 1;
         if (pageSize < 1) pageSize = 20;
         if (pageSize > 1000) pageSize = 1000;
-        return dataStore.findTransactionsPaginated(accountId, startDate, endDate, category, tt, userId, page, pageSize);
+        return dataStore.findTransactionsPaginated(accountId, startDate, endDate, category, subCategory, tt, userId, page, pageSize);
     }
 
+    /**
+     * 按分类汇总交易统计。
+     * @param groupBy 分组维度："category"（一级分类，默认）或 "subCategory"（二级分类）
+     */
     public List<Map<String, Object>> summarizeTransactions(String userId, String type,
-                                                            LocalDate startDate, LocalDate endDate) {
+                                                            LocalDate startDate, LocalDate endDate,
+                                                            String groupBy) {
         TransactionType tt = parseTransactionType(type);
-        List<Transaction> transactions = dataStore.findTransactions(null, startDate, endDate, null, tt, userId);
+        List<Transaction> transactions = dataStore.findTransactions(null, startDate, endDate, null, null, tt, userId);
 
-        Map<String, BigDecimal> totalByCategory = new LinkedHashMap<>();
-        Map<String, Integer> countByCategory = new LinkedHashMap<>();
+        boolean bySubCategory = "subCategory".equalsIgnoreCase(groupBy);
+        Map<String, BigDecimal> totalByGroup = new LinkedHashMap<>();
+        Map<String, Integer> countByGroup = new LinkedHashMap<>();
 
         for (Transaction t : transactions) {
-            String category = t.getCategory() != null ? t.getCategory() : "未分类";
+            String groupKey;
+            if (bySubCategory) {
+                groupKey = t.getSubCategory() != null ? t.getSubCategory() : "未分类";
+            } else {
+                groupKey = t.getCategory() != null ? t.getCategory() : "未分类";
+            }
             BigDecimal amount = t.getAmount() != null ? t.getAmount() : BigDecimal.ZERO;
-            totalByCategory.merge(category, amount, BigDecimal::add);
-            countByCategory.merge(category, 1, Integer::sum);
+            totalByGroup.merge(groupKey, amount, BigDecimal::add);
+            countByGroup.merge(groupKey, 1, Integer::sum);
         }
 
         List<Map<String, Object>> result = new ArrayList<>();
         BigDecimal grandTotal = BigDecimal.ZERO;
-        for (Map.Entry<String, BigDecimal> entry : totalByCategory.entrySet()) {
+        String groupLabel = bySubCategory ? "subCategory" : "category";
+        for (Map.Entry<String, BigDecimal> entry : totalByGroup.entrySet()) {
             Map<String, Object> item = new LinkedHashMap<>();
-            item.put("category", entry.getKey());
+            item.put(groupLabel, entry.getKey());
             item.put("totalAmount", entry.getValue());
-            item.put("count", countByCategory.get(entry.getKey()));
+            item.put("count", countByGroup.get(entry.getKey()));
             result.add(item);
             grandTotal = grandTotal.add(entry.getValue());
         }
 
         Map<String, Object> summary = new LinkedHashMap<>();
-        summary.put("category", "合计");
+        summary.put(groupLabel, "合计");
         summary.put("totalAmount", grandTotal);
         summary.put("count", transactions.size());
         result.add(summary);
@@ -134,6 +148,9 @@ public class FinanceService {
         if (transaction.getCategory() == null || transaction.getCategory().isBlank()) {
             throw new IllegalArgumentException("分类不能为空");
         }
+        if (transaction.getSubCategory() == null || transaction.getSubCategory().isBlank()) {
+            throw new IllegalArgumentException("二级分类不能为空");
+        }
         if (transaction.getDate() == null) {
             transaction.setDate(LocalDate.now());
         }
@@ -148,7 +165,38 @@ public class FinanceService {
         return transaction;
     }
 
-    public List<Category> listCategories() {
-        return dataStore.findAllCategories();
+    /**
+     * 返回树形分类列表：一级分类带 children 列表。
+     */
+    public List<Map<String, Object>> listCategoriesTree() {
+        List<Category> all = dataStore.findAllCategories();
+        // 按 parentId 分组
+        Map<Long, List<Category>> childrenMap = new LinkedHashMap<>();
+        List<Category> roots = new ArrayList<>();
+        for (Category c : all) {
+            if (c.getParentId() == null) {
+                roots.add(c);
+            } else {
+                childrenMap.computeIfAbsent(c.getParentId(), k -> new ArrayList<>()).add(c);
+            }
+        }
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Category root : roots) {
+            Map<String, Object> node = new LinkedHashMap<>();
+            node.put("id", root.getId());
+            node.put("name", root.getName());
+            node.put("type", root.getType().name());
+            List<Map<String, Object>> children = new ArrayList<>();
+            List<Category> subs = childrenMap.getOrDefault(root.getId(), List.of());
+            for (Category sub : subs) {
+                Map<String, Object> child = new LinkedHashMap<>();
+                child.put("id", sub.getId());
+                child.put("name", sub.getName());
+                children.add(child);
+            }
+            node.put("children", children);
+            result.add(node);
+        }
+        return result;
     }
 }

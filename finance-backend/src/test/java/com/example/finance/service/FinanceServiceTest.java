@@ -48,7 +48,7 @@ class FinanceServiceTest {
         Account account = financeService.createAccount(
                 new Account(null, "转账测试", AccountType.CASH, new BigDecimal("1000.00"), "testuser"));
         Transaction tx = new Transaction(null, account.getId(), TransactionType.EXPENSE,
-                new BigDecimal("200.00"), "餐饮", "午餐", LocalDate.now(), "testuser");
+                new BigDecimal("200.00"), "餐饮", "外卖", "午餐", LocalDate.now(), "testuser");
         financeService.createTransaction(tx);
         BigDecimal balance = financeService.getBalance(account.getId()).orElseThrow();
         assertThat(balance).isEqualByComparingTo(new BigDecimal("800.00"));
@@ -56,7 +56,7 @@ class FinanceServiceTest {
 
     @Test
     void shouldListCategories() {
-        assertThat(financeService.listCategories()).isNotEmpty();
+        assertThat(financeService.listCategoriesTree()).isNotEmpty();
     }
 
     @Test
@@ -82,9 +82,9 @@ class FinanceServiceTest {
         Account account = new Account(null, "测试", AccountType.CASH, new BigDecimal("1000"), "test");
         account = financeService.createAccount(account);
         Transaction t1 = new Transaction(null, account.getId(), TransactionType.EXPENSE,
-                new BigDecimal("200"), "餐饮", "午餐", null, "test");
+                new BigDecimal("200"), "餐饮", "外卖", "午餐", null, "test");
         Transaction t2 = new Transaction(null, account.getId(), TransactionType.INCOME,
-                new BigDecimal("500"), "工资", null, null, "test");
+                new BigDecimal("500"), "工资", "基本工资", null, null, "test");
         financeService.createTransaction(t1);
         financeService.createTransaction(t2);
         BigDecimal balance = financeService.getBalance(account.getId()).orElse(BigDecimal.ZERO);

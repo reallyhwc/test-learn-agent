@@ -45,13 +45,14 @@ class TransactionControllerTest {
     @Test
     void shouldCreateTransaction() throws Exception {
         String json = """
-            {"accountId":1,"type":"EXPENSE","amount":100,"category":"餐饮","note":"午餐","date":"2026-05-23"}
+            {"accountId":1,"type":"EXPENSE","amount":100,"category":"餐饮","subCategory":"外卖","note":"午餐","date":"2026-05-23"}
         """;
         mockMvc.perform(post("/api/transactions")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.id").isNumber());
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.id").isNumber())
+                .andExpect(jsonPath("$.subCategory").value("外卖"));
     }
 
     @Test

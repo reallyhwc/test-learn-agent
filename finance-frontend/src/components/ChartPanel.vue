@@ -10,7 +10,15 @@
       </el-col>
       <el-col :span="12">
         <el-card shadow="hover">
-          <template #header>支出分类占比</template>
+          <template #header>
+            <div class="pie-header">
+              <span>支出分类占比</span>
+              <el-radio-group v-model="pieDimension" size="small">
+                <el-radio-button value="category">一级分类</el-radio-button>
+                <el-radio-button value="subCategory">二级分类</el-radio-button>
+              </el-radio-group>
+            </div>
+          </template>
           <v-chart :option="pieOption" autoresize style="height: 300px" />
         </el-card>
       </el-col>
@@ -34,6 +42,7 @@ const userStore = useUserStore()
 
 const chartData = ref([])
 const hasData = computed(() => chartData.value.length > 0)
+const pieDimension = ref('category')
 
 async function fetchData() {
   try {
@@ -71,11 +80,13 @@ const lineOption = computed(() => {
   }
 })
 
-// Category pie chart (expenses only)
+// Category pie chart (expenses only), supports dimension switch
 const pieOption = computed(() => {
+  const groupKey = pieDimension.value === 'subCategory' ? 'subCategory' : 'category'
   const catMap = {}
   chartData.value.filter(t => t.type === 'EXPENSE').forEach(t => {
-    catMap[t.category] = (catMap[t.category] || 0) + t.amount
+    const key = t[groupKey] || t.category || '未分类'
+    catMap[key] = (catMap[key] || 0) + t.amount
   })
   const data = Object.entries(catMap).map(([name, value]) => ({ name, value }))
   return {
@@ -93,4 +104,5 @@ const pieOption = computed(() => {
 <style scoped>
 .chart-panel { margin-bottom: 20px; }
 .chart-panel h3 { margin-bottom: 12px; }
+.pie-header { display: flex; align-items: center; justify-content: space-between; }
 </style>

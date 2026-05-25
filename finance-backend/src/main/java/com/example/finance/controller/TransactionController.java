@@ -32,6 +32,7 @@ public class TransactionController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
             @RequestParam(required = false) String category,
+            @RequestParam(required = false) String subCategory,
             @RequestParam(required = false) String type,
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer pageSize) {
@@ -40,7 +41,7 @@ public class TransactionController {
         if (pageSize > 1000) pageSize = 1000;
 
         log.info("GET /api/transactions userId={} page={} pageSize={}", LogMaskUtils.maskUserId(userId), page, pageSize);
-        return financeService.listTransactionsPaginated(userId, accountId, startDate, endDate, category, type, page, pageSize);
+        return financeService.listTransactionsPaginated(userId, accountId, startDate, endDate, category, subCategory, type, page, pageSize);
     }
 
     @GetMapping("/summary")
@@ -48,21 +49,25 @@ public class TransactionController {
             @RequestParam(required = false, defaultValue = "default") String userId,
             @RequestParam(required = false) String type,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate) {
-        log.info("GET /api/transactions/summary userId={} type={}", LogMaskUtils.maskUserId(userId), type);
-        return financeService.summarizeTransactions(userId, type, startDate, endDate);
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "category") String groupBy) {
+        log.info("GET /api/transactions/summary userId={} type={} groupBy={}", LogMaskUtils.maskUserId(userId), type, groupBy);
+        return financeService.summarizeTransactions(userId, type, startDate, endDate, groupBy);
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Transaction createTransaction(@RequestBody Transaction transaction) {
-        log.info("POST /api/transactions userId={} amount={} category={}", LogMaskUtils.maskUserId(transaction.getUserId()), LogMaskUtils.maskAmount(transaction.getAmount()), transaction.getCategory());
+        log.info("POST /api/transactions userId={} amount={} category={}/{}", LogMaskUtils.maskUserId(transaction.getUserId()), LogMaskUtils.maskAmount(transaction.getAmount()), transaction.getCategory(), transaction.getSubCategory());
         // XSS 清洗用户可控文本字段
         if (transaction.getNote() != null) {
             transaction.setNote(XssUtils.sanitize(transaction.getNote()));
         }
         if (transaction.getCategory() != null) {
             transaction.setCategory(XssUtils.sanitize(transaction.getCategory()));
+        }
+        if (transaction.getSubCategory() != null) {
+            transaction.setSubCategory(XssUtils.sanitize(transaction.getSubCategory()));
         }
         return financeService.createTransaction(transaction);
     }

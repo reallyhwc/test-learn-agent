@@ -5,7 +5,8 @@ import lombok.NoArgsConstructor;
 import lombok.AllArgsConstructor;
 
 /**
- * 交易分类实体，定义收入或支出的分类标签（如"餐饮"、"工资"等）。
+ * 交易分类实体，支持二级树形结构（如"餐饮→外卖"）。
+ * parentId 为 null 表示一级分类，非 null 表示二级分类。
  */
 @Data
 @NoArgsConstructor
@@ -20,4 +21,7 @@ public class Category {
 
     /** 所属交易类型：收入分类或支出分类 */
     private TransactionType type;
+
+    /** 父分类ID，null 表示一级分类 */
+    private Long parentId;
 }

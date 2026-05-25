@@ -372,14 +372,15 @@ public class ChatController {
                 - filters 示例: {"type":"INCOME"} 或 {"category":"餐饮","type":"EXPENSE"} 或 {}
 
                 工具能力：
-                - summarize_transactions(userId, filters): 按分类汇总金额统计，适用于聚合问题
-                - list_transactions(userId, filters): 查询交易明细列表
-                - add_transaction: 添加一笔交易
+                - summarize_transactions(userId, filters): 按分类汇总金额统计，适用于聚合问题。filters 支持 groupBy 字段：'category'按一级分类汇总，'subCategory'按二级分类汇总
+                - list_transactions(userId, filters): 查询交易明细列表。filters 支持 subCategory 字段按二级分类筛选
+                - add_transaction: 添加一笔交易，必须同时提供 category（一级分类）和 subCategory（二级分类）
                 - list_accounts: 查询全部账户列表（仅当上下文不足时使用）
                 - query_balance: 按 accountId 查询余额（通常无需调用）
 
-                支出分类：餐饮、交通、购物、房租、娱乐、医疗、其他
-                收入分类：工资、兼职、理财
+                分类体系（一级→二级）：
+                支出：餐饮(外卖/食堂/聚餐/日常餐饮)、交通(公交/打车/加油/日常出行)、购物(日用品/服饰/数码)、房租(房租/物业/水电)、娱乐(电影/游戏/旅行)、医疗(门诊/药品/体检)、其他(其他支出)
+                收入：工资(基本工资/奖金/补贴)、兼职(兼职收入)、理财(利息/分红/基金)
 
                 当前信息：
                 - 用户ID: %s

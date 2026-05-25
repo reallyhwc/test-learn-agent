@@ -66,11 +66,25 @@ public class CsvDataStore {
             .addColumn("type")
             .addColumn("amount")
             .addColumn("category")
+            .addColumn("subCategory")
             .addColumn("note")
             .addColumn("date")
             .addColumn("userId")
             .build().withHeader();
 
+    /** 无 subCategory 列的旧交易格式（含 userId） */
+    private static final CsvSchema TRANSACTION_SCHEMA_NO_SUB = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("accountId")
+            .addColumn("type")
+            .addColumn("amount")
+            .addColumn("category")
+            .addColumn("note")
+            .addColumn("date")
+            .addColumn("userId")
+            .build().withHeader();
+
+    /** 无 subCategory 且无 userId 的最旧交易格式 */
     private static final CsvSchema TRANSACTION_SCHEMA_OLD = CsvSchema.builder()
             .addColumn("id")
             .addColumn("accountId")
@@ -82,6 +96,14 @@ public class CsvDataStore {
             .build().withHeader();
 
     private static final CsvSchema CATEGORY_SCHEMA = CsvSchema.builder()
+            .addColumn("id")
+            .addColumn("name")
+            .addColumn("type")
+            .addColumn("parentId")
+            .build().withHeader();
+
+    /** 无 parentId 列的旧分类格式 */
+    private static final CsvSchema CATEGORY_SCHEMA_OLD = CsvSchema.builder()
             .addColumn("id")
             .addColumn("name")
             .addColumn("type")
@@ -181,13 +203,15 @@ public class CsvDataStore {
     }
 
     public List<Transaction> findTransactions(Long accountId, LocalDate startDate, LocalDate endDate,
-                                               String category, TransactionType type, String userId) {
+                                               String category, String subCategory,
+                                               TransactionType type, String userId) {
         dataLock.readLock().lock();
         try {
             return transactions.stream()
                     .filter(t -> accountId == null || accountId.equals(t.getAccountId()))
                     .filter(t -> matchDateRange(t.getDate(), startDate, endDate))
                     .filter(t -> category == null || category.equals(t.getCategory()))
+                    .filter(t -> subCategory == null || subCategory.equals(t.getSubCategory()))
                     .filter(t -> type == null || t.getType() == type)
                     .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
                     .collect(Collectors.toList());
@@ -197,13 +221,15 @@ public class CsvDataStore {
     }
 
     public PageResult<Transaction> findTransactionsPaginated(Long accountId, LocalDate startDate, LocalDate endDate,
-            String category, TransactionType type, String userId, int page, int pageSize) {
+            String category, String subCategory,
+            TransactionType type, String userId, int page, int pageSize) {
         dataLock.readLock().lock();
         try {
             List<Transaction> filtered = transactions.stream()
                     .filter(t -> accountId == null || accountId.equals(t.getAccountId()))
                     .filter(t -> matchDateRange(t.getDate(), startDate, endDate))
                     .filter(t -> category == null || category.equals(t.getCategory()))
+                    .filter(t -> subCategory == null || subCategory.equals(t.getSubCategory()))
                     .filter(t -> type == null || t.getType() == type)
                     .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
                     .collect(Collectors.toList());
@@ -341,15 +367,41 @@ public class CsvDataStore {
         persistToCsv("accounts.csv", accounts, ACCOUNT_SCHEMA);
     }
 
+    /** 一级分类 → 默认二级分类的映射，用于历史数据推导 */
+    private static final Map<String, String> DEFAULT_SUB_CATEGORY = Map.ofEntries(
+            Map.entry("餐饮", "日常餐饮"), Map.entry("交通", "日常出行"),
+            Map.entry("购物", "日用品"), Map.entry("房租", "房租"),
+            Map.entry("娱乐", "日常娱乐"), Map.entry("医疗", "门诊"),
+            Map.entry("其他", "其他支出"), Map.entry("工资", "基本工资"),
+            Map.entry("兼职", "兼职收入"), Map.entry("理财", "利息"),
+            Map.entry("居住", "日常居住"), Map.entry("社交", "聚会")
+    );
+
     private void loadTransactions() {
         File file = new File(dataDir, "transactions.csv");
         if (!file.exists()) return;
-        if (csvHasUserIdColumn(file)) {
+
+        boolean hasUserId = csvHasUserIdColumn(file);
+        boolean hasSubCategory = csvHasColumn(file, "subCategory");
+
+        if (hasUserId && hasSubCategory) {
+            // 最新格式：含 userId + subCategory
             List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA);
             transactions.addAll(loaded);
+        } else if (hasUserId) {
+            // 中间格式：含 userId 但无 subCategory
+            List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA_NO_SUB);
+            loaded.forEach(this::inferSubCategory);
+            transactions.addAll(loaded);
+            persistTransactions();
+            log.info("已为 {} 条历史交易推导补全 subCategory", loaded.size());
         } else {
+            // 最旧格式：无 userId 无 subCategory
             List<Transaction> loaded = loadFromCsv("transactions.csv", Transaction.class, TRANSACTION_SCHEMA_OLD);
-            loaded.forEach(t -> t.setUserId("default"));
+            loaded.forEach(t -> {
+                t.setUserId("default");
+                inferSubCategory(t);
+            });
             transactions.addAll(loaded);
             persistTransactions();
         }
@@ -357,28 +409,106 @@ public class CsvDataStore {
                 .ifPresent(max -> transactionIdGen.set(max + 1));
     }
 
+    /** 根据一级分类推导二级分类 */
+    private void inferSubCategory(Transaction transaction) {
+        if (transaction.getSubCategory() != null && !transaction.getSubCategory().isBlank()) {
+            return;
+        }
+        String category = transaction.getCategory();
+        String defaultSub = (category != null) ? DEFAULT_SUB_CATEGORY.getOrDefault(category, category) : "未分类";
+        transaction.setSubCategory(defaultSub);
+    }
+
     private void persistTransactions() {
         persistToCsv("transactions.csv", transactions, TRANSACTION_SCHEMA);
     }
 
-    private void loadCategories() {
-        List<Category> loaded = loadFromCsv("categories.csv", Category.class, CATEGORY_SCHEMA);
-        if (loaded.isEmpty()) {
-            saveCategory(new Category(null, "工资", TransactionType.INCOME));
-            saveCategory(new Category(null, "兼职", TransactionType.INCOME));
-            saveCategory(new Category(null, "理财", TransactionType.INCOME));
-            saveCategory(new Category(null, "餐饮", TransactionType.EXPENSE));
-            saveCategory(new Category(null, "交通", TransactionType.EXPENSE));
-            saveCategory(new Category(null, "购物", TransactionType.EXPENSE));
-            saveCategory(new Category(null, "房租", TransactionType.EXPENSE));
-            saveCategory(new Category(null, "娱乐", TransactionType.EXPENSE));
-            saveCategory(new Category(null, "医疗", TransactionType.EXPENSE));
-            saveCategory(new Category(null, "其他", TransactionType.EXPENSE));
-            return;
+    private boolean csvHasColumn(File file, String columnName) {
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String header = reader.readLine();
+            return header != null && header.contains(columnName);
+        } catch (IOException e) {
+            return false;
         }
-        categories.addAll(loaded);
-        categories.stream().mapToLong(Category::getId).max()
-                .ifPresent(max -> categoryIdGen.set(max + 1));
+    }
+
+    private void loadCategories() {
+        File file = new File(dataDir, "categories.csv");
+        if (file.exists() && csvHasColumn(file, "parentId")) {
+            List<Category> loaded = loadFromCsv("categories.csv", Category.class, CATEGORY_SCHEMA);
+            if (!loaded.isEmpty()) {
+                categories.addAll(loaded);
+                categories.stream().mapToLong(Category::getId).max()
+                        .ifPresent(max -> categoryIdGen.set(max + 1));
+                return;
+            }
+        } else if (file.exists()) {
+            log.info("检测到旧格式 categories.csv（无 parentId 列），将重建为二级分类");
+        }
+        // 初始化或升级：创建二级树形种子数据
+        categories.clear();
+        initCategorySeedData();
+    }
+
+    private void initCategorySeedData() {
+        // 收入一级分类
+        long salaryId = addCategory("工资", TransactionType.INCOME, null);
+        addCategory("基本工资", TransactionType.INCOME, salaryId);
+        addCategory("奖金", TransactionType.INCOME, salaryId);
+        addCategory("补贴", TransactionType.INCOME, salaryId);
+
+        long partTimeId = addCategory("兼职", TransactionType.INCOME, null);
+        addCategory("兼职收入", TransactionType.INCOME, partTimeId);
+
+        long investId = addCategory("理财", TransactionType.INCOME, null);
+        addCategory("利息", TransactionType.INCOME, investId);
+        addCategory("分红", TransactionType.INCOME, investId);
+        addCategory("基金", TransactionType.INCOME, investId);
+
+        // 支出一级分类
+        long foodId = addCategory("餐饮", TransactionType.EXPENSE, null);
+        addCategory("外卖", TransactionType.EXPENSE, foodId);
+        addCategory("食堂", TransactionType.EXPENSE, foodId);
+        addCategory("聚餐", TransactionType.EXPENSE, foodId);
+        addCategory("日常餐饮", TransactionType.EXPENSE, foodId);
+
+        long transportId = addCategory("交通", TransactionType.EXPENSE, null);
+        addCategory("公交", TransactionType.EXPENSE, transportId);
+        addCategory("打车", TransactionType.EXPENSE, transportId);
+        addCategory("加油", TransactionType.EXPENSE, transportId);
+        addCategory("日常出行", TransactionType.EXPENSE, transportId);
+
+        long shoppingId = addCategory("购物", TransactionType.EXPENSE, null);
+        addCategory("日用品", TransactionType.EXPENSE, shoppingId);
+        addCategory("服饰", TransactionType.EXPENSE, shoppingId);
+        addCategory("数码", TransactionType.EXPENSE, shoppingId);
+
+        long rentId = addCategory("房租", TransactionType.EXPENSE, null);
+        addCategory("房租", TransactionType.EXPENSE, rentId);
+        addCategory("物业", TransactionType.EXPENSE, rentId);
+        addCategory("水电", TransactionType.EXPENSE, rentId);
+
+        long funId = addCategory("娱乐", TransactionType.EXPENSE, null);
+        addCategory("电影", TransactionType.EXPENSE, funId);
+        addCategory("游戏", TransactionType.EXPENSE, funId);
+        addCategory("旅行", TransactionType.EXPENSE, funId);
+
+        long medicalId = addCategory("医疗", TransactionType.EXPENSE, null);
+        addCategory("门诊", TransactionType.EXPENSE, medicalId);
+        addCategory("药品", TransactionType.EXPENSE, medicalId);
+        addCategory("体检", TransactionType.EXPENSE, medicalId);
+
+        long otherId = addCategory("其他", TransactionType.EXPENSE, null);
+        addCategory("其他支出", TransactionType.EXPENSE, otherId);
+
+        persistCategories();
+    }
+
+    /** 添加分类到内存列表，返回其 ID */
+    private long addCategory(String name, TransactionType type, Long parentId) {
+        long id = categoryIdGen.getAndIncrement();
+        categories.add(new Category(id, name, type, parentId));
+        return id;
     }
 
     private void saveCategory(Category category) {
@@ -386,6 +516,10 @@ public class CsvDataStore {
             category.setId(categoryIdGen.getAndIncrement());
             categories.add(category);
         }
+        persistCategories();
+    }
+
+    private void persistCategories() {
         persistToCsv("categories.csv", categories, CATEGORY_SCHEMA);
     }
 }

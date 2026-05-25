@@ -8,7 +8,7 @@
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-select v-model="form.type" placeholder="类型" style="width: 100px">
+        <el-select v-model="form.type" placeholder="类型" style="width: 100px" @change="onTypeChange">
           <el-option label="收入" value="INCOME" />
           <el-option label="支出" value="EXPENSE" />
         </el-select>
@@ -17,9 +17,14 @@
         <el-input-number v-model="form.amount" :min="0.01" :precision="2" placeholder="金额" style="width: 130px" />
       </el-form-item>
       <el-form-item>
-        <el-select v-model="form.category" placeholder="分类" style="width: 110px">
-          <el-option v-for="c in categories" :key="c.name" :label="c.name" :value="c.name" />
-        </el-select>
+        <el-cascader
+          v-model="categorySelection"
+          :options="cascaderOptions"
+          :props="{ expandTrigger: 'hover' }"
+          placeholder="选择分类"
+          style="width: 180px"
+          clearable
+        />
       </el-form-item>
       <el-form-item>
         <el-input v-model="form.note" placeholder="备注" style="width: 140px" />
@@ -33,7 +38,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useUserStore } from '../stores/userStore.js'
 import { apiGet, apiPost, handleApiError } from '../utils/api.js'
 
@@ -41,11 +46,31 @@ const userStore = useUserStore()
 
 const emit = defineEmits(['saved'])
 const accounts = ref([])
-const categories = ref([])
+const categoryTree = ref([])
 const submitting = ref(false)
 const msg = ref('')
+const categorySelection = ref([])
 
-const form = reactive({ accountId: '', type: '', amount: null, category: '', note: '' })
+const form = reactive({ accountId: '', type: '', amount: null, note: '' })
+
+/** 根据交易类型过滤分类树，转为 el-cascader 所需的 options 格式 */
+const cascaderOptions = computed(() => {
+  const typeFilter = form.type === 'INCOME' ? 'INCOME' : 'EXPENSE'
+  return categoryTree.value
+    .filter(c => c.type === typeFilter)
+    .map(c => ({
+      value: c.name,
+      label: c.name,
+      children: (c.children || []).map(sub => ({
+        value: sub.name,
+        label: sub.name,
+      })),
+    }))
+})
+
+function onTypeChange() {
+  categorySelection.value = []
+}
 
 async function fetchAccounts() {
   try {
@@ -57,7 +82,7 @@ async function fetchAccounts() {
 
 onMounted(async () => {
   try {
-    categories.value = await apiGet('/api/categories')
+    categoryTree.value = await apiGet('/api/categories')
   } catch (e) {
     handleApiError(e, '加载分类失败')
   }
@@ -67,18 +92,24 @@ onMounted(async () => {
 watch(() => userStore.currentUser, fetchAccounts)
 
 async function submit() {
-  if (!form.accountId || !form.type || !form.amount || !form.category) return
+  if (!form.accountId || !form.type || !form.amount || categorySelection.value.length < 2) return
   submitting.value = true
   msg.value = ''
   try {
     await apiPost('/api/transactions', {
-      ...form,
+      accountId: form.accountId,
+      type: form.type,
+      amount: form.amount,
+      category: categorySelection.value[0],
+      subCategory: categorySelection.value[1],
+      note: form.note,
       userId: userStore.currentUser,
       date: new Date().toISOString().split('T')[0],
     })
     msg.value = '保存成功'
     form.amount = null
     form.note = ''
+    categorySelection.value = []
     emit('saved')
   } catch (e) {
     msg.value = ''

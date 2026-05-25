@@ -26,8 +26,11 @@ public class Transaction {
     /** 交易金额（正数，单位：元） */
     private BigDecimal amount;
 
-    /** 交易分类，如"餐饮"、"工资"、"交通" */
+    /** 一级分类，如"餐饮"、"工资"、"交通" */
     private String category;
+
+    /** 二级分类，如"外卖"、"基本工资"、"打车" */
+    private String subCategory;
 
     /** 备注说明 */
     private String note;

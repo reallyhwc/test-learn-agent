@@ -59,8 +59,8 @@ public class FinanceTools {
 
     @McpTool(name = "list_transactions",
             description = "查询交易记录明细列表。仅 userId 必填，其余过滤条件通过 filters JSON 传入。"
-                    + "filters 示例: {\"category\":\"理财\",\"type\":\"INCOME\"} 或 {\"startDate\":\"2026-05-01\",\"endDate\":\"2026-05-24\"}"
-                    + " filters 可用字段: startDate、endDate(yyyy-MM-dd)、category(餐饮/交通/购物/理财等)、type(INCOME/EXPENSE)、accountId")
+                    + "filters 示例: {\"category\":\"餐饮\",\"subCategory\":\"外卖\",\"type\":\"EXPENSE\"}"
+                    + " filters 可用字段: startDate、endDate(yyyy-MM-dd)、category(一级分类)、subCategory(二级分类)、type(INCOME/EXPENSE)、accountId")
     public Object listTransactions(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "过滤条件JSON，如{\"category\":\"理财\",\"type\":\"INCOME\"}，无过滤传{}") String filters) {
@@ -73,6 +73,7 @@ public class FinanceTools {
             String startDate = (String) filterMap.get("startDate");
             String endDate = (String) filterMap.get("endDate");
             String category = (String) filterMap.get("category");
+            String subCategory = (String) filterMap.get("subCategory");
             String type = (String) filterMap.get("type");
             Object accountIdObj = filterMap.get("accountId");
 
@@ -82,6 +83,7 @@ public class FinanceTools {
             if (startDate != null) uriBuilder.queryParam("startDate", startDate);
             if (endDate != null) uriBuilder.queryParam("endDate", endDate);
             if (category != null) uriBuilder.queryParam("category", category);
+            if (subCategory != null) uriBuilder.queryParam("subCategory", subCategory);
             if (type != null) uriBuilder.queryParam("type", type);
             if (accountIdObj != null) uriBuilder.queryParam("accountId", accountIdObj);
 
@@ -121,11 +123,13 @@ public class FinanceTools {
     @McpTool(name = "summarize_transactions",
             description = "按分类汇总交易金额统计。返回每个分类的总金额和笔数及合计。"
                     + "适用于'赚了多少''花了多少''收支汇总'类问题。"
-                    + "仅 userId 必填，filters 可选。示例: userId='default', filters='{\"type\":\"INCOME\"}'")
+                    + "仅 userId 必填，filters 可选。"
+                    + "filters 可用字段: type(INCOME/EXPENSE)、startDate、endDate(yyyy-MM-dd)、"
+                    + "groupBy('category'按一级分类汇总，'subCategory'按二级分类汇总，默认category)")
     @SuppressWarnings("unchecked")
     public Object summarizeTransactions(
             @McpToolParam(description = "用户ID") String userId,
-            @McpToolParam(description = "过滤条件JSON，如{\"type\":\"INCOME\"}，无过滤传{}") String filters) {
+            @McpToolParam(description = "过滤条件JSON，如{\"type\":\"INCOME\",\"groupBy\":\"subCategory\"}，无过滤传{}") String filters) {
         long start = System.nanoTime();
 
         try {
@@ -135,12 +139,14 @@ public class FinanceTools {
             String type = (String) filterMap.get("type");
             String startDate = (String) filterMap.get("startDate");
             String endDate = (String) filterMap.get("endDate");
+            String groupBy = (String) filterMap.get("groupBy");
 
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions/summary")
                     .queryParam("userId", userId);
             if (type != null) uriBuilder.queryParam("type", type);
             if (startDate != null) uriBuilder.queryParam("startDate", startDate);
             if (endDate != null) uriBuilder.queryParam("endDate", endDate);
+            if (groupBy != null) uriBuilder.queryParam("groupBy", groupBy);
 
             java.net.URI uri = uriBuilder.build().toUri();
             log.info("summarizeTransactions URI: {}", uri);
@@ -172,13 +178,19 @@ public class FinanceTools {
         }
     }
 
-    @McpTool(name = "add_transaction", description = "添加一笔交易记录")
+    @McpTool(name = "add_transaction",
+            description = "添加一笔交易记录。category 和 subCategory 必须同时提供。"
+                    + "支出一级分类: 餐饮(外卖/食堂/聚餐/日常餐饮)、交通(公交/打车/加油/日常出行)、"
+                    + "购物(日用品/服饰/数码)、房租(房租/物业/水电)、娱乐(电影/游戏/旅行)、"
+                    + "医疗(门诊/药品/体检)、其他(其他支出)。"
+                    + "收入一级分类: 工资(基本工资/奖金/补贴)、兼职(兼职收入)、理财(利息/分红/基金)。")
     public Object addTransaction(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "账户ID") Long accountId,
             @McpToolParam(description = "交易类型: INCOME 或 EXPENSE") String type,
             @McpToolParam(description = "金额") BigDecimal amount,
-            @McpToolParam(description = "分类") String category,
+            @McpToolParam(description = "一级分类，如餐饮、工资") String category,
+            @McpToolParam(description = "二级分类，如外卖、基本工资") String subCategory,
             @McpToolParam(description = "备注") String note) {
         try {
             userId = validateUserId(userId);
@@ -196,10 +208,13 @@ public class FinanceTools {
             return "添加交易失败，交易类型必须是 INCOME 或 EXPENSE";
         }
         if (category == null || category.isBlank()) {
-            return "添加交易失败，分类不能为空";
+            return "添加交易失败，一级分类不能为空";
         }
-        log.info("addTransaction called with userId={}, accountId={}, type={}, amount={}, category={}",
-                userId, accountId, type, amount, category);
+        if (subCategory == null || subCategory.isBlank()) {
+            return "添加交易失败，二级分类不能为空";
+        }
+        log.info("addTransaction called with userId={}, accountId={}, type={}, amount={}, category={}/{}",
+                userId, accountId, type, amount, category, subCategory);
         long start = System.nanoTime();
 
         try {
@@ -209,6 +224,7 @@ public class FinanceTools {
             body.put("type", type);
             body.put("amount", amount);
             body.put("category", category);
+            body.put("subCategory", subCategory);
             body.put("note", note != null ? note : "");
             body.put("date", java.time.LocalDate.now().toString());
 
