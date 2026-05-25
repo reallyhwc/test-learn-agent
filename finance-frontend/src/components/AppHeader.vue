@@ -1,62 +1,31 @@
 <template>
   <el-header class="app-header">
     <div class="header-left">
-      <h1>Personal Finance Agent</h1>
-      <span class="subtitle">记账 · AI 助手</span>
-      <span class="ai-badge" @click="showAiInfo = true">
-        {{ aiStore.getAgentLabel(aiStore.agentType) }}
-      </span>
+      <div class="logo-icon">💰</div>
+      <div class="logo-text">
+        <h1>Finance Agent</h1>
+        <span class="subtitle">智能记账助手</span>
+      </div>
     </div>
     <div class="header-right">
-      <span class="user-label">用户：</span>
-      <el-select v-model="userStore.currentUser" size="small" style="width: 120px">
+      <el-select v-model="userStore.currentUser" size="small" class="user-select">
         <el-option v-for="u in userStore.users" :key="u.id" :label="u.name" :value="u.id" />
       </el-select>
+      <button class="theme-toggle" @click="userStore.toggleTheme" :aria-label="themeLabel">
+        {{ userStore.theme === 'light' ? '🌙' : '☀️' }}
+      </button>
     </div>
-
-    <!-- AI 配置信息弹窗 -->
-    <el-dialog v-model="showAiInfo" title="AI 服务配置" width="420px">
-      <el-descriptions :column="1" border>
-        <el-descriptions-item label="Agent 提供者">
-          <el-tag :type="aiStore.agentType === 'python' ? 'success' : ''">
-            {{ aiStore.getAgentLabel(aiStore.agentType) }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="MCP Server">
-          <el-tag :type="aiStore.mcpType === 'python' ? 'success' : ''">
-            {{ aiStore.mcpType === 'python' ? 'Python (FastMCP)' : 'Java (Spring AI MCP)' }}
-          </el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="Agent 端口">
-          {{ aiStore.agentPort }}
-        </el-descriptions-item>
-        <el-descriptions-item label="可用 Agent">
-          {{ aiStore.availableAgents.map(a => aiStore.getAgentLabel(a)).join('、') }}
-        </el-descriptions-item>
-      </el-descriptions>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-text type="info" size="small">
-            修改 AI 提供者请编辑根目录 config.yaml，然后重启服务
-          </el-text>
-        </span>
-      </template>
-    </el-dialog>
   </el-header>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { computed } from 'vue'
 import { useUserStore } from '../stores/userStore.js'
-import { useAiStore } from '../stores/aiStore.js'
 
 const userStore = useUserStore()
-const aiStore = useAiStore()
-const showAiInfo = ref(false)
-
-onMounted(() => {
-  aiStore.fetchConfig()
-})
+const themeLabel = computed(() =>
+  userStore.theme === 'light' ? '切换暗色模式' : '切换亮色模式'
+)
 </script>
 
 <style scoped>
@@ -65,28 +34,48 @@ onMounted(() => {
   align-items: center;
   justify-content: space-between;
   padding: 0 24px;
-  background: #1a1a2e;
-  color: #fff;
-  height: 56px;
+  background: var(--theme-bg-header);
+  color: var(--theme-text-primary);
+  height: 60px;
+  box-shadow: var(--theme-shadow-header);
+  transition: background var(--theme-transition), color var(--theme-transition), box-shadow var(--theme-transition);
 }
-.header-left { display: flex; align-items: center; gap: 12px; }
-.header-left h1 { font-size: 1.1rem; font-weight: 600; }
-.subtitle { color: #888; font-size: 0.85rem; }
-.header-right { display: flex; align-items: center; gap: 8px; }
-.user-label { color: #ccc; font-size: 0.85rem; }
 
-.ai-badge {
-  display: inline-block;
-  padding: 2px 10px;
-  font-size: 12px;
-  color: #a0c4ff;
-  background: rgba(64, 158, 255, 0.15);
-  border: 1px solid rgba(64, 158, 255, 0.3);
-  border-radius: 12px;
+.header-left { display: flex; align-items: center; gap: 12px; }
+
+.logo-icon {
+  width: 36px; height: 36px;
+  background: var(--theme-primary-gradient);
+  border-radius: var(--theme-radius-icon);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 18px;
+  box-shadow: 0 2px 8px var(--theme-primary-shadow);
+}
+
+.logo-text { display: flex; flex-direction: column; }
+.logo-text h1 { font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
+.subtitle { color: var(--theme-text-muted); font-size: 0.75rem; }
+
+.header-right { display: flex; align-items: center; gap: 10px; }
+
+.user-select { width: 120px; }
+.user-select :deep(.el-input__wrapper) {
+  border-radius: var(--theme-radius-tag);
+  background: var(--theme-bg-input);
+  box-shadow: none;
+  border: 1px solid var(--theme-border);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+
+.theme-toggle {
+  width: 36px; height: 36px;
+  border: 1px solid var(--theme-border);
+  border-radius: 50%;
+  background: var(--theme-bg-input);
+  font-size: 18px;
   cursor: pointer;
-  transition: all 0.2s;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--theme-transition), border-color var(--theme-transition), transform 0.2s;
 }
-.ai-badge:hover {
-  background: rgba(64, 158, 255, 0.25);
-}
+.theme-toggle:hover { transform: scale(1.1); }
 </style>

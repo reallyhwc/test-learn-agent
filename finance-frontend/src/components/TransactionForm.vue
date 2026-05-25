@@ -121,7 +121,43 @@ async function submit() {
 </script>
 
 <style scoped>
-.tx-form { margin-bottom: 20px; }
-.tx-form h3 { margin-bottom: 12px; }
-.msg { color: var(--el-color-success); font-size: 0.85rem; }
+.tx-form {
+  background: var(--theme-bg-card);
+  border-radius: var(--theme-radius-card);
+  box-shadow: var(--theme-shadow-card);
+  padding: var(--theme-padding-card);
+  border: 1px solid var(--theme-border-light);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+.tx-form h3 {
+  margin-bottom: 14px;
+  color: var(--theme-text-secondary);
+  font-weight: 700;
+}
+.msg { color: var(--theme-success); font-size: 0.85rem; margin-top: 8px; }
+:deep(.el-button--success) {
+  background: var(--theme-primary-gradient);
+  border: none;
+  border-radius: var(--theme-radius-btn);
+  color: var(--theme-text-on-primary);
+  box-shadow: var(--theme-shadow-btn);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+:deep(.el-button--success:hover),
+:deep(.el-button--success:focus) {
+  background: var(--theme-primary-gradient);
+  box-shadow: var(--theme-shadow-btn-hover);
+  transform: translateY(-1px);
+  color: var(--theme-text-on-primary);
+}
+:deep(.el-input__wrapper),
+:deep(.el-input-number .el-input__wrapper),
+:deep(.el-select .el-input__wrapper),
+:deep(.el-cascader .el-input__wrapper) {
+  border-radius: var(--theme-radius-input);
+  transition: box-shadow 0.2s;
+}
+:deep(.el-input__wrapper.is-focus) {
+  box-shadow: var(--theme-shadow-focus);
+}
 </style>

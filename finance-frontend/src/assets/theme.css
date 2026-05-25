@@ -1,0 +1,168 @@
+/* ============================================================
+   Personal Finance Agent — 柔和圆润主题 (Soft & Rounded)
+   亮色模式 + 暗色模式 CSS 变量体系
+   ============================================================ */
+
+/* ---------- 亮色模式（默认） ---------- */
+:root {
+  /* 主色 */
+  --theme-primary: #6366f1;
+  --theme-primary-light: #818cf8;
+  --theme-primary-lighter: #c7d2fe;
+  --theme-primary-bg: #eef2ff;
+  --theme-primary-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --theme-primary-shadow: rgba(99, 102, 241, 0.3);
+
+  /* 语义色 */
+  --theme-success: #38a169;
+  --theme-danger: #e53e3e;
+  --theme-warning: #d69e2e;
+
+  /* 背景 */
+  --theme-bg-page: #f5f7fb;
+  --theme-bg-card: #ffffff;
+  --theme-bg-card-hover: #f7fafc;
+  --theme-bg-input: #f7fafc;
+  --theme-bg-header: #ffffff;
+  --theme-bg-chat: #ffffff;
+  --theme-bg-chat-input: #fafbfd;
+  --theme-bg-msg-ai: #f7fafc;
+  --theme-bg-tag: #eef2ff;
+  --theme-bg-table-row: #f7fafc;
+  --theme-bg-table-hover: #edf2f7;
+  --theme-bg-code: #1e1e1e;
+  --theme-bg-thinking: #fafafa;
+
+  /* 文字 */
+  --theme-text-primary: #1a202c;
+  --theme-text-secondary: #4a5568;
+  --theme-text-muted: #a0aec0;
+  --theme-text-on-primary: #ffffff;
+  --theme-text-tag: #6366f1;
+
+  /* 边框 */
+  --theme-border: #e2e8f0;
+  --theme-border-light: #f0f0f5;
+  --theme-border-input: #e2e8f0;
+  --theme-border-focus: #6366f1;
+
+  /* 阴影 */
+  --theme-shadow-card: 0 2px 12px rgba(0, 0, 0, 0.04);
+  --theme-shadow-card-hover: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --theme-shadow-header: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --theme-shadow-btn: 0 4px 14px rgba(99, 102, 241, 0.3);
+  --theme-shadow-btn-hover: 0 6px 20px rgba(99, 102, 241, 0.4);
+  --theme-shadow-focus: 0 0 0 3px rgba(99, 102, 241, 0.1);
+
+  /* 圆角 */
+  --theme-radius-card: 20px;
+  --theme-radius-input: 12px;
+  --theme-radius-btn: 12px;
+  --theme-radius-bubble: 18px;
+  --theme-radius-tag: 20px;
+  --theme-radius-table-row: 12px;
+  --theme-radius-icon: 10px;
+
+  /* 间距 */
+  --theme-gap-section: 20px;
+  --theme-gap-card: 14px;
+  --theme-padding-card: 24px;
+  --theme-padding-page: 20px;
+
+  /* 过渡 */
+  --theme-transition: 0.25s ease;
+}
+
+/* ---------- 暗色模式 ---------- */
+[data-theme="dark"] {
+  --theme-primary: #818cf8;
+  --theme-primary-light: #a5b4fc;
+  --theme-primary-lighter: #4f46e5;
+  --theme-primary-bg: rgba(99, 102, 241, 0.15);
+  --theme-primary-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --theme-primary-shadow: rgba(99, 102, 241, 0.25);
+
+  --theme-success: #48bb78;
+  --theme-danger: #fc8181;
+  --theme-warning: #ecc94b;
+
+  --theme-bg-page: #0f1117;
+  --theme-bg-card: #1a1b23;
+  --theme-bg-card-hover: #22232d;
+  --theme-bg-input: #22232d;
+  --theme-bg-header: #14151d;
+  --theme-bg-chat: #14151d;
+  --theme-bg-chat-input: #1a1b23;
+  --theme-bg-msg-ai: #22232d;
+  --theme-bg-tag: rgba(99, 102, 241, 0.15);
+  --theme-bg-table-row: #1e1f28;
+  --theme-bg-table-hover: #282a35;
+  --theme-bg-code: #0d0d0d;
+  --theme-bg-thinking: #1e1f28;
+
+  --theme-text-primary: #e2e8f0;
+  --theme-text-secondary: #a0aec0;
+  --theme-text-muted: #636b7a;
+  --theme-text-on-primary: #ffffff;
+  --theme-text-tag: #a5b4fc;
+
+  --theme-border: #2a2b35;
+  --theme-border-light: #22232d;
+  --theme-border-input: #2a2b35;
+  --theme-border-focus: #818cf8;
+
+  --theme-shadow-card: 0 2px 12px rgba(0, 0, 0, 0.2);
+  --theme-shadow-card-hover: 0 4px 20px rgba(0, 0, 0, 0.3);
+  --theme-shadow-header: 0 1px 3px rgba(0, 0, 0, 0.3);
+  --theme-shadow-btn: 0 4px 14px rgba(99, 102, 241, 0.2);
+  --theme-shadow-btn-hover: 0 6px 20px rgba(99, 102, 241, 0.3);
+  --theme-shadow-focus: 0 0 0 3px rgba(129, 140, 248, 0.15);
+
+  /* Element Plus 暗色覆盖 */
+  --el-bg-color: #1a1b23;
+  --el-bg-color-overlay: #22232d;
+  --el-text-color-primary: #e2e8f0;
+  --el-text-color-regular: #a0aec0;
+  --el-text-color-secondary: #636b7a;
+  --el-border-color: #2a2b35;
+  --el-border-color-light: #22232d;
+  --el-fill-color-blank: #22232d;
+  --el-fill-color-light: #1e1f28;
+  --el-color-primary: #818cf8;
+  --el-color-primary-light-3: rgba(129, 140, 248, 0.3);
+  --el-color-primary-light-5: rgba(129, 140, 248, 0.2);
+  --el-color-primary-light-7: rgba(129, 140, 248, 0.15);
+  --el-color-primary-light-9: rgba(129, 140, 248, 0.1);
+  --el-mask-color: rgba(0, 0, 0, 0.6);
+}
+
+/* ---------- Element Plus 亮色覆盖 ---------- */
+:root {
+  --el-color-primary: #6366f1;
+  --el-color-primary-light-3: #818cf8;
+  --el-color-primary-light-5: #a5b4fc;
+  --el-color-primary-light-7: #c7d2fe;
+  --el-color-primary-light-9: #eef2ff;
+  --el-color-primary-dark-2: #4f46e5;
+  --el-border-radius-base: 8px;
+  --el-border-radius-small: 6px;
+  --el-border-radius-round: 20px;
+}
+
+/* ---------- 全局基础样式 ---------- */
+body {
+  background: var(--theme-bg-page);
+  color: var(--theme-text-primary);
+  transition: background var(--theme-transition), color var(--theme-transition);
+}
+
+/* 主题过渡动画 */
+.app,
+.app-header,
+.content-area,
+.chat-area {
+  transition: background var(--theme-transition),
+              border-color var(--theme-transition),
+              box-shadow var(--theme-transition),
+              color var(--theme-transition);
+}

@@ -2,13 +2,13 @@
   <div class="chart-panel" v-if="hasData">
     <h3>统计图表</h3>
     <el-row :gutter="16">
-      <el-col :span="12">
+      <el-col :span="12" :xs="24">
         <el-card shadow="hover">
           <template #header>日收支曲线</template>
           <v-chart :option="lineOption" autoresize style="height: 300px" />
         </el-card>
       </el-col>
-      <el-col :span="12">
+      <el-col :span="12" :xs="24">
         <el-card shadow="hover">
           <template #header>
             <div class="pie-header">
@@ -73,9 +73,9 @@ const lineOption = computed(() => {
     yAxis: { type: 'value' },
     series: [
       { name: '收入', type: 'line', data: dates.map(d => dailyMap[d].income),
-        smooth: true, color: '#2ecc71' },
+        smooth: true, color: '#38a169' },
       { name: '支出', type: 'line', data: dates.map(d => dailyMap[d].expense),
-        smooth: true, color: '#e74c3c' }
+        smooth: true, color: '#e53e3e' }
     ]
   }
 })
@@ -102,7 +102,29 @@ const pieOption = computed(() => {
 </script>
 
 <style scoped>
-.chart-panel { margin-bottom: 20px; }
-.chart-panel h3 { margin-bottom: 12px; }
+.chart-panel {
+  background: var(--theme-bg-card);
+  border-radius: var(--theme-radius-card);
+  box-shadow: var(--theme-shadow-card);
+  padding: var(--theme-padding-card);
+  border: 1px solid var(--theme-border-light);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+.chart-panel h3 {
+  margin-bottom: 14px;
+  color: var(--theme-text-secondary);
+  font-weight: 700;
+}
 .pie-header { display: flex; align-items: center; justify-content: space-between; }
+:deep(.el-card) {
+  background: var(--theme-bg-card);
+  border-color: var(--theme-border-light);
+  border-radius: 16px;
+}
+:deep(.el-card__header) {
+  color: var(--theme-text-secondary);
+  border-bottom-color: var(--theme-border-light);
+  font-weight: 600;
+}
+:deep(.el-radio-button__inner) { border-radius: 8px; }
 </style>

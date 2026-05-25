@@ -30,7 +30,7 @@
       </el-table-column>
       <el-table-column label="金额" width="120">
         <template #default="{ row }">
-          <span :style="{ color: row.type === 'INCOME' ? 'var(--el-color-success)' : 'var(--el-color-danger)' }">
+          <span :style="{ color: row.type === 'INCOME' ? 'var(--theme-success)' : 'var(--theme-danger)' }">
             ¥{{ row.amount.toFixed(2) }}
           </span>
         </template>
@@ -115,9 +115,28 @@ defineExpose({ fetchList })
 </script>
 
 <style scoped>
-.tx-list { margin-bottom: 20px; }
-.tx-list h3 { margin-bottom: 12px; }
-.filters { display: flex; gap: 8px; margin-bottom: 12px; }
-.pagination { margin-top: 12px; display: flex; justify-content: center; }
-.sub-cat { color: var(--el-text-color-secondary); font-size: 0.85em; }
+.tx-list {
+  background: var(--theme-bg-card);
+  border-radius: var(--theme-radius-card);
+  box-shadow: var(--theme-shadow-card);
+  padding: var(--theme-padding-card);
+  border: 1px solid var(--theme-border-light);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+.tx-list h3 {
+  margin-bottom: 14px;
+  color: var(--theme-text-secondary);
+  font-weight: 700;
+}
+.filters { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+.filters :deep(.el-input__wrapper) { border-radius: var(--theme-radius-input); }
+:deep(.el-table) { background: transparent; color: var(--theme-text-primary); --el-table-bg-color: transparent; }
+:deep(.el-table th.el-table__cell) { background: transparent !important; color: var(--theme-text-muted); }
+:deep(.el-table tr) { background: var(--theme-bg-card); }
+:deep(.el-table--striped .el-table__body tr.el-table__row--striped td.el-table__cell) { background: var(--theme-bg-table-row); }
+:deep(.el-table__body tr:hover > td.el-table__cell) { background: var(--theme-bg-table-hover) !important; }
+:deep(.el-table td.el-table__cell) { border-bottom-color: var(--theme-border-light); }
+:deep(.el-table__inner-wrapper::before) { background-color: var(--theme-border-light); }
+.pagination { margin-top: 16px; display: flex; justify-content: center; }
+.sub-cat { color: var(--theme-text-muted); font-size: 0.85em; }
 </style>

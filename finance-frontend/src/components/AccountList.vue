@@ -52,10 +52,43 @@ watch(() => userStore.currentUser, fetchAccounts)
 </script>
 
 <style scoped>
-.account-list { margin-bottom: 20px; }
-.account-list h3 { margin-bottom: 12px; }
+.account-list {
+  background: var(--theme-bg-card);
+  border-radius: var(--theme-radius-card);
+  box-shadow: var(--theme-shadow-card);
+  padding: var(--theme-padding-card);
+  border: 1px solid var(--theme-border-light);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+.account-list h3 {
+  margin-bottom: 14px;
+  color: var(--theme-text-secondary);
+  font-weight: 700;
+}
+.account-card {
+  border-radius: 16px;
+  border: 1px solid var(--theme-border-light);
+  background: var(--theme-bg-card);
+  box-shadow: var(--theme-shadow-card);
+  transition: transform 0.2s, box-shadow 0.2s, background var(--theme-transition);
+}
+.account-card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--theme-shadow-card-hover);
+}
+:deep(.el-card__body) { padding: 18px; }
 .card-top { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-.account-name { font-weight: 600; }
-.balance { font-size: 1.4rem; font-weight: 700; color: var(--el-color-success); }
-.balance.negative { color: var(--el-color-danger); }
+.account-name { font-weight: 600; color: var(--theme-text-primary); }
+.balance {
+  font-size: 1.5rem; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--theme-success);
+}
+.balance.negative { color: var(--theme-danger); }
+:deep(.el-tag) {
+  border-radius: var(--theme-radius-tag);
+  background: var(--theme-bg-tag);
+  color: var(--theme-text-tag);
+  border: none;
+}
 </style>

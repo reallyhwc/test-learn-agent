@@ -62,35 +62,53 @@ onUnmounted(() => {
 
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif; }
+.app {
+  display: flex; flex-direction: column; height: 100vh; overflow: hidden;
+  background: var(--theme-bg-page);
+  transition: background var(--theme-transition);
+}
 .main-layout { flex: 1; overflow: hidden; }
-.content-area { padding: 20px; overflow-y: auto; }
-.chat-area { width: 400px; border-left: 1px solid var(--el-border-color-light); overflow: hidden; }
+.content-area {
+  padding: var(--theme-padding-page);
+  overflow-y: auto;
+  display: flex; flex-direction: column;
+  gap: var(--theme-gap-section);
+}
+.chat-area {
+  width: 400px;
+  border-left: 1px solid var(--theme-border-light);
+  overflow: hidden;
+  background: var(--theme-bg-chat);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
 
 .mobile-tab-bar {
   display: flex;
-  border-bottom: 1px solid var(--el-border-color-light);
-  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--theme-border);
+  background: var(--theme-bg-card);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
 }
 .mobile-tab-bar button {
   flex: 1;
-  padding: 10px;
+  padding: 12px;
   border: none;
   background: none;
   font-size: 14px;
+  font-weight: 500;
   cursor: pointer;
   border-bottom: 2px solid transparent;
-  color: var(--el-text-color-regular);
+  color: var(--theme-text-muted);
+  transition: color var(--theme-transition), border-color var(--theme-transition);
 }
 .mobile-tab-bar button.active {
-  color: var(--el-color-primary);
-  border-bottom-color: var(--el-color-primary);
+  color: var(--theme-primary);
+  border-bottom-color: var(--theme-primary);
 }
 
 @media (max-width: 768px) {
   .main-layout { flex-direction: column; }
-  .chat-area { width: 100% !important; border-left: none; border-top: 1px solid var(--el-border-color-light); height: 100%; }
-  .content-area { padding: 12px; }
+  .chat-area { width: 100% !important; border-left: none; border-top: 1px solid var(--theme-border); height: 100%; }
+  .content-area { padding: 12px; gap: 14px; }
 }
 </style>

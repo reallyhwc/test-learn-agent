@@ -227,28 +227,57 @@ async function send() {
 <style scoped>
 .chat-panel {
   display: flex; flex-direction: column; height: 100%;
-  background: var(--el-bg-color);
+  background: var(--theme-bg-chat);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
 }
 .chat-header {
-  padding: 12px 16px; font-weight: 600;
-  border-bottom: 1px solid var(--el-border-color-light);
+  padding: 14px 18px; font-weight: 700;
+  color: var(--theme-text-primary);
+  border-bottom: 1px solid var(--theme-border-light);
+  display: flex; align-items: center; gap: 8px;
 }
 .chat-messages {
-  flex: 1; overflow-y: auto; padding: 12px;
+  flex: 1; overflow-y: auto; padding: 14px;
+  background: transparent;
 }
 .chat-input {
-  display: flex; padding: 12px; gap: 0;
-  border-top: 1px solid var(--el-border-color-light);
+  display: flex; padding: 14px; gap: 8px;
+  background: var(--theme-bg-chat-input);
+  border-top: 1px solid var(--theme-border-light);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+.chat-input :deep(.el-input__wrapper) {
+  border-radius: 20px;
+  background: var(--theme-bg-card);
+  border: 1.5px solid var(--theme-border-input);
+  box-shadow: none;
+  transition: border-color var(--theme-transition), box-shadow var(--theme-transition);
+}
+.chat-input :deep(.el-input__wrapper:focus-within) {
+  border-color: var(--theme-border-focus);
+  box-shadow: var(--theme-shadow-focus);
+}
+.chat-input :deep(.el-input__inner) { color: var(--theme-text-primary); }
+.chat-input :deep(.el-button--primary) {
+  background: var(--theme-primary-gradient);
+  color: var(--theme-text-on-primary);
+  border: none;
+  border-radius: 20px;
+  box-shadow: var(--theme-shadow-btn);
+  transition: box-shadow 0.2s;
+}
+.chat-input :deep(.el-button--primary:hover) {
+  box-shadow: var(--theme-shadow-btn-hover);
 }
 .memory-info {
   float: right;
   font-size: 0.8rem;
-  color: var(--el-text-color-secondary);
+  color: var(--theme-text-muted);
   font-weight: normal;
 }
-.thinking { color: var(--el-text-color-secondary); font-size: 0.85rem; font-style: italic; padding: 8px; }
+.thinking { color: var(--theme-text-muted); font-size: 0.85rem; font-style: italic; padding: 8px; }
 .streaming-dot {
-  width: 8px; height: 8px; background: var(--el-color-primary);
+  width: 8px; height: 8px; background: var(--theme-primary);
   border-radius: 50%; animation: pulse 1s infinite; margin: 8px;
 }
 @keyframes pulse {
