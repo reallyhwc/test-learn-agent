@@ -40,10 +40,10 @@ public class FinanceTools {
     public Object queryBalance(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "账户ID") Long accountId) {
-        userId = validateUserId(userId);
-        log.info("queryBalance called with userId={}, accountId={}", userId, accountId);
         long start = System.nanoTime();
         try {
+            userId = validateUserId(userId);
+            log.info("queryBalance called with userId={}, accountId={}", userId, accountId);
             BigDecimal result = restClient.get()
                     .uri("/api/accounts/{id}/balance", accountId)
                     .retrieve()
@@ -64,11 +64,11 @@ public class FinanceTools {
     public Object listTransactions(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "过滤条件JSON，如{\"category\":\"理财\",\"type\":\"INCOME\"}，无过滤传{}") String filters) {
-        userId = validateUserId(userId);
-        log.info("listTransactions called with userId={}, filters={}", userId, filters);
         long start = System.nanoTime();
 
         try {
+            userId = validateUserId(userId);
+            log.info("listTransactions called with userId={}, filters={}", userId, filters);
             Map<String, Object> filterMap = parseFilters(filters);
             String startDate = (String) filterMap.get("startDate");
             String endDate = (String) filterMap.get("endDate");
@@ -93,6 +93,10 @@ public class FinanceTools {
                     .retrieve()
                     .body(Map.class);
 
+            if (pageResult == null) {
+                recordSuccess("list_transactions", start);
+                return List.of();
+            }
             log.info("listTransactions response: total={}", pageResult.get("total"));
 
             List<Map<String, Object>> rawItems = (List<Map<String, Object>>) pageResult.get("items");
@@ -122,11 +126,11 @@ public class FinanceTools {
     public Object summarizeTransactions(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "过滤条件JSON，如{\"type\":\"INCOME\"}，无过滤传{}") String filters) {
-        userId = validateUserId(userId);
-        log.info("summarizeTransactions called with userId={}, filters={}", userId, filters);
         long start = System.nanoTime();
 
         try {
+            userId = validateUserId(userId);
+            log.info("summarizeTransactions called with userId={}, filters={}", userId, filters);
             Map<String, Object> filterMap = parseFilters(filters);
             String type = (String) filterMap.get("type");
             String startDate = (String) filterMap.get("startDate");
@@ -147,7 +151,7 @@ public class FinanceTools {
                     .body(List.class);
 
             recordSuccess("summarize_transactions", start);
-            return result;
+            return result != null ? result : List.of();
         } catch (Exception e) {
             recordError("summarize_transactions", e);
             log.error("汇总交易统计失败: userId={}", userId, e);
@@ -176,7 +180,11 @@ public class FinanceTools {
             @McpToolParam(description = "金额") BigDecimal amount,
             @McpToolParam(description = "分类") String category,
             @McpToolParam(description = "备注") String note) {
-        userId = validateUserId(userId);
+        try {
+            userId = validateUserId(userId);
+        } catch (IllegalArgumentException e) {
+            return e.getMessage();
+        }
         // 参数校验 — 返回友好错误信息，不抛异常
         if (accountId == null) {
             return "添加交易失败，账户ID不能为空";
@@ -223,19 +231,20 @@ public class FinanceTools {
                     + "balance 已包含在返回中，无需再调用 query_balance。")
     public Object listAccounts(
             @McpToolParam(description = "用户ID") String userId) {
-        userId = validateUserId(userId);
-        log.info("listAccounts called with userId={}", userId);
         long start = System.nanoTime();
 
         try {
+            userId = validateUserId(userId);
+            log.info("listAccounts called with userId={}", userId);
             // 使用 UriComponentsBuilder 防止 URL 注入（统一风格）
             java.net.URI uri = UriComponentsBuilder.fromPath("/api/accounts")
                     .queryParam("userId", userId)
                     .build().toUri();
-            List<AccountResponse> result = List.of(restClient.get()
+            AccountResponse[] body = restClient.get()
                     .uri(uri)
                     .retrieve()
-                    .body(AccountResponse[].class));
+                    .body(AccountResponse[].class);
+            List<AccountResponse> result = (body != null) ? List.of(body) : List.of();
             recordSuccess("list_accounts", start);
             return result;
         } catch (Exception e) {

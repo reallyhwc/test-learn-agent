@@ -57,9 +57,12 @@ public class TransactionController {
     @ResponseStatus(HttpStatus.CREATED)
     public Transaction createTransaction(@RequestBody Transaction transaction) {
         log.info("POST /api/transactions userId={} amount={} category={}", LogMaskUtils.maskUserId(transaction.getUserId()), LogMaskUtils.maskAmount(transaction.getAmount()), transaction.getCategory());
-        // XSS 清洗 note 字段
+        // XSS 清洗用户可控文本字段
         if (transaction.getNote() != null) {
             transaction.setNote(XssUtils.sanitize(transaction.getNote()));
+        }
+        if (transaction.getCategory() != null) {
+            transaction.setCategory(XssUtils.sanitize(transaction.getCategory()));
         }
         return financeService.createTransaction(transaction);
     }

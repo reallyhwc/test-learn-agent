@@ -83,7 +83,8 @@ public class FinanceService {
 
         for (Transaction t : transactions) {
             String category = t.getCategory() != null ? t.getCategory() : "未分类";
-            totalByCategory.merge(category, t.getAmount(), BigDecimal::add);
+            BigDecimal amount = t.getAmount() != null ? t.getAmount() : BigDecimal.ZERO;
+            totalByCategory.merge(category, amount, BigDecimal::add);
             countByCategory.merge(category, 1, Integer::sum);
         }
 

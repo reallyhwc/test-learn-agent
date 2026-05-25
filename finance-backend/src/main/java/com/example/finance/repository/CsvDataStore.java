@@ -185,7 +185,7 @@ public class CsvDataStore {
         dataLock.readLock().lock();
         try {
             return transactions.stream()
-                    .filter(t -> accountId == null || t.getAccountId().equals(accountId))
+                    .filter(t -> accountId == null || accountId.equals(t.getAccountId()))
                     .filter(t -> matchDateRange(t.getDate(), startDate, endDate))
                     .filter(t -> category == null || category.equals(t.getCategory()))
                     .filter(t -> type == null || t.getType() == type)
@@ -201,7 +201,7 @@ public class CsvDataStore {
         dataLock.readLock().lock();
         try {
             List<Transaction> filtered = transactions.stream()
-                    .filter(t -> accountId == null || t.getAccountId().equals(accountId))
+                    .filter(t -> accountId == null || accountId.equals(t.getAccountId()))
                     .filter(t -> matchDateRange(t.getDate(), startDate, endDate))
                     .filter(t -> category == null || category.equals(t.getCategory()))
                     .filter(t -> type == null || t.getType() == type)
