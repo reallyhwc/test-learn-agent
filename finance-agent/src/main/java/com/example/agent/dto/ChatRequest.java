@@ -1,11 +1,18 @@
 package com.example.agent.dto;
 
-public class ChatRequest {
-    private String message;
-    private String userId;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-    public String getMessage() { return message; }
-    public void setMessage(String message) { this.message = message; }
-    public String getUserId() { return userId; }
-    public void setUserId(String userId) { this.userId = userId; }
+/**
+ * 聊天请求DTO，前端发送用户消息时的请求体。
+ */
+@Data
+@NoArgsConstructor
+public class ChatRequest {
+
+    /** 用户发送的聊天消息内容 */
+    private String message;
+
+    /** 用户唯一标识 */
+    private String userId;
 }

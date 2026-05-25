@@ -1,19 +1,25 @@
 package com.example.mcp.dto;
 
 import java.math.BigDecimal;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
+/**
+ * 账户响应DTO，由MCP Server返回给AI Agent，描述一个资金账户。
+ */
+@Data
+@NoArgsConstructor
 public class AccountResponse {
-    private Long id;
-    private String name;
-    private String type;
-    private BigDecimal balance;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-    public BigDecimal getBalance() { return balance; }
-    public void setBalance(BigDecimal balance) { this.balance = balance; }
+    /** 账户唯一标识 */
+    private Long id;
+
+    /** 账户名称，如"招商银行储蓄卡"、"支付宝" */
+    private String name;
+
+    /** 账户类型：CASH(现金) / BANK(银行卡) / CARD(信用卡/第三方) */
+    private String type;
+
+    /** 账户余额（单位：元） */
+    private BigDecimal balance;
 }

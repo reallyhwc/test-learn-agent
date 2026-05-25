@@ -2,28 +2,34 @@ package com.example.mcp.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
+/**
+ * 交易流水响应DTO，由MCP Server返回给AI Agent，描述一笔交易记录。
+ */
+@Data
+@NoArgsConstructor
 public class TransactionResponse {
-    private Long id;
-    private Long accountId;
-    private String type;
-    private BigDecimal amount;
-    private String category;
-    private String note;
-    private LocalDate date;
 
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-    public Long getAccountId() { return accountId; }
-    public void setAccountId(Long accountId) { this.accountId = accountId; }
-    public String getType() { return type; }
-    public void setType(String type) { this.type = type; }
-    public BigDecimal getAmount() { return amount; }
-    public void setAmount(BigDecimal amount) { this.amount = amount; }
-    public String getCategory() { return category; }
-    public void setCategory(String category) { this.category = category; }
-    public String getNote() { return note; }
-    public void setNote(String note) { this.note = note; }
-    public LocalDate getDate() { return date; }
-    public void setDate(LocalDate date) { this.date = date; }
+    /** 流水唯一标识 */
+    private Long id;
+
+    /** 关联的账户ID */
+    private Long accountId;
+
+    /** 交易类型：INCOME(收入) / EXPENSE(支出) */
+    private String type;
+
+    /** 交易金额（正数，单位：元） */
+    private BigDecimal amount;
+
+    /** 交易分类，如"餐饮"、"工资"、"交通" */
+    private String category;
+
+    /** 备注说明 */
+    private String note;
+
+    /** 交易日期 */
+    private LocalDate date;
 }

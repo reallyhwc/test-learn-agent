@@ -1,14 +1,21 @@
 package com.example.agent.dto;
 
-public class FeedbackRequest {
-    private String userId;
-    private String messageId;
-    private String rating;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-    public String getUserId() { return userId; }
-    public void setUserId(String userId) { this.userId = userId; }
-    public String getMessageId() { return messageId; }
-    public void setMessageId(String messageId) { this.messageId = messageId; }
-    public String getRating() { return rating; }
-    public void setRating(String rating) { this.rating = rating; }
+/**
+ * 用户反馈请求DTO，用于提交对AI回复的评价。
+ */
+@Data
+@NoArgsConstructor
+public class FeedbackRequest {
+
+    /** 用户唯一标识 */
+    private String userId;
+
+    /** 被评价的消息ID */
+    private String messageId;
+
+    /** 评价等级，如"good"、"bad" */
+    private String rating;
 }
