@@ -1,0 +1,15 @@
+[project]
+name = "finance-mcp-server-py"
+version = "1.0.0"
+description = "Python MCP Server for Personal Finance Agent"
+requires-python = ">=3.10"
+dependencies = [
+    "mcp[cli]>=1.0.0",
+    "httpx>=0.27.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
