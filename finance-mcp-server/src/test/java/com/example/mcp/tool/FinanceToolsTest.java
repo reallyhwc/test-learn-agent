@@ -144,7 +144,7 @@ class FinanceToolsTest {
 
         @SuppressWarnings("unchecked")
         Map<String, Object> result = (Map<String, Object>) financeTools.addTransaction("default", 1L, "EXPENSE",
-                new BigDecimal("50"), "餐饮", "午餐");
+                new BigDecimal("50"), "餐饮", "午餐", "午餐");
         assertThat(result).containsKey("id");
     }
 
