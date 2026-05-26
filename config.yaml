@@ -1,0 +1,23 @@
+# AI 服务提供者配置
+ai:
+  agent: java
+  mcp: java
+
+# 服务端口
+services:
+  backend:
+    port: 8080
+  mcp-java:
+    port: 8082
+  mcp-python:
+    port: 8083
+  agent-java:
+    port: 8081
+  agent-python:
+    port: 8084
+
+# LLM 配置（两个 Agent 共用 .env 中的值）
+llm:
+  api_key: ${LLM_API_KEY}
+  base_url: https://api.deepseek.com
+  model: deepseek-chat
