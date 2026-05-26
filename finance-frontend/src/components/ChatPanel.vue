@@ -145,6 +145,20 @@ async function send() {
   const controller = new AbortController()
   activeController = controller
 
+  // 15s 自动超时：避免网络异常时无限等待
+  const timeoutId = setTimeout(() => {
+    if (!firstToken) {
+      controller.abort()
+    }
+  }, 15000)
+
+  // TTFT 超过 3s 时显示"正在思考"提示
+  const thinkingHintId = setTimeout(() => {
+    if (!firstToken && messages.value[assistantIdx]) {
+      messages.value[assistantIdx].thinking = '正在思考中…'
+    }
+  }, 3000)
+
   try {
     const res = await fetch('/api/chat/stream', {
       method: 'POST',
@@ -203,11 +217,19 @@ async function send() {
     refreshMemoryCount()
   } catch (e) {
     if (e.name === 'AbortError') {
-      console.log('[Agent] 用户中止')
-      messages.value[assistantIdx].text =
-        (messages.value[assistantIdx].text || '') +
-        (messages.value[assistantIdx].text ? '\n\n' : '') +
-        '⏹ 已停止'
+      if (!firstToken) {
+        // 超时触发的 abort（15s 内无首 token）
+        console.warn('[Agent] 超时中止（15s 无响应）')
+        messages.value[assistantIdx].text = '⚠️ 响应超时，请简化问题或稍后重试'
+        messages.value[assistantIdx].thinking = ''
+      } else {
+        // 用户手动中止
+        console.log('[Agent] 用户中止')
+        messages.value[assistantIdx].text =
+          (messages.value[assistantIdx].text || '') +
+          (messages.value[assistantIdx].text ? '\n\n' : '') +
+          '⏹ 已停止'
+      }
     } else {
       console.error('[Agent] Error:', e)
       if (!messages.value[assistantIdx].text) {
@@ -218,6 +240,8 @@ async function send() {
     }
     messages.value[assistantIdx].streaming = false
   } finally {
+    clearTimeout(timeoutId)
+    clearTimeout(thinkingHintId)
     activeController = null
     thinking.value = false
   }

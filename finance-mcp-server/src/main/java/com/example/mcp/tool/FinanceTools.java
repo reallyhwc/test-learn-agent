@@ -57,10 +57,15 @@ public class FinanceTools {
         }
     }
 
+    /** 默认返回条数，平衡信息量与 token 消耗 */
+    private static final int DEFAULT_PAGE_SIZE = 50;
+    private static final int MAX_PAGE_SIZE = 200;
+
     @McpTool(name = "list_transactions",
-            description = "查询交易记录明细列表。仅 userId 必填，其余过滤条件通过 filters JSON 传入。"
-                    + "filters 示例: {\"category\":\"餐饮\",\"subCategory\":\"外卖\",\"type\":\"EXPENSE\"}"
-                    + " filters 可用字段: startDate、endDate(yyyy-MM-dd)、category(一级分类)、subCategory(二级分类)、type(INCOME/EXPENSE)、accountId")
+            description = "查询交易记录明细列表，默认返回最近50条。仅 userId 必填，其余过滤条件通过 filters JSON 传入。"
+                    + "如需更多可在 filters 中指定 limit（最大200）。"
+                    + "filters 示例: {\"category\":\"餐饮\",\"type\":\"EXPENSE\",\"limit\":100}"
+                    + " filters 可用字段: startDate、endDate(yyyy-MM-dd)、category(一级分类)、subCategory(二级分类)、type(INCOME/EXPENSE)、accountId、limit(返回条数)")
     public Object listTransactions(
             @McpToolParam(description = "用户ID") String userId,
             @McpToolParam(description = "过滤条件JSON，如{\"category\":\"理财\",\"type\":\"INCOME\"}，无过滤传{}") String filters) {
@@ -77,9 +82,21 @@ public class FinanceTools {
             String type = (String) filterMap.get("type");
             Object accountIdObj = filterMap.get("accountId");
 
+            // 支持 LLM 通过 filters.limit 指定返回条数，默认 50，上限 200
+            int pageSize = DEFAULT_PAGE_SIZE;
+            Object limitObj = filterMap.get("limit");
+            if (limitObj != null) {
+                try {
+                    pageSize = Math.min(Integer.parseInt(limitObj.toString()), MAX_PAGE_SIZE);
+                    if (pageSize < 1) pageSize = DEFAULT_PAGE_SIZE;
+                } catch (NumberFormatException ignored) {
+                    // 解析失败用默认值
+                }
+            }
+
             UriComponentsBuilder uriBuilder = UriComponentsBuilder.fromPath("/api/transactions")
                     .queryParam("userId", userId)
-                    .queryParam("pageSize", 1000);
+                    .queryParam("pageSize", pageSize);
             if (startDate != null) uriBuilder.queryParam("startDate", startDate);
             if (endDate != null) uriBuilder.queryParam("endDate", endDate);
             if (category != null) uriBuilder.queryParam("category", category);
@@ -90,6 +107,7 @@ public class FinanceTools {
             java.net.URI uri = uriBuilder.build().toUri();
             log.info("listTransactions URI: {}", uri);
 
+            @SuppressWarnings("unchecked")
             Map<String, Object> pageResult = restClient.get()
                     .uri(uri)
                     .retrieve()
@@ -97,22 +115,32 @@ public class FinanceTools {
 
             if (pageResult == null) {
                 recordSuccess("list_transactions", start);
-                return List.of();
+                return Map.of("items", List.of(), "total", 0, "showing", 0,
+                        "summary", "未查询到交易记录");
             }
-            log.info("listTransactions response: total={}", pageResult.get("total"));
 
+            int total = pageResult.get("total") != null ? ((Number) pageResult.get("total")).intValue() : 0;
+            log.info("listTransactions response: total={}, pageSize={}", total, pageSize);
+
+            @SuppressWarnings("unchecked")
             List<Map<String, Object>> rawItems = (List<Map<String, Object>>) pageResult.get("items");
             if (rawItems == null || rawItems.isEmpty()) {
                 recordSuccess("list_transactions", start);
-                return List.of();
+                return Map.of("items", List.of(), "total", total, "showing", 0,
+                        "summary", "共 " + total + " 条记录，当前无匹配数据");
             }
 
-            List<TransactionResponse> result = new ArrayList<>();
+            List<TransactionResponse> items = new ArrayList<>();
             for (Map<String, Object> item : rawItems) {
-                result.add(objectMapper.convertValue(item, TransactionResponse.class));
+                items.add(objectMapper.convertValue(item, TransactionResponse.class));
             }
             recordSuccess("list_transactions", start);
-            return result;
+
+            // 返回带摘要的结构，让 LLM 知道数据全貌而不需要拉全量
+            String summary = rawItems.size() < total
+                    ? "共 " + total + " 条记录，已展示最近 " + rawItems.size() + " 条"
+                    : "共 " + total + " 条记录";
+            return Map.of("items", items, "total", total, "showing", rawItems.size(), "summary", summary);
         } catch (Exception e) {
             recordError("list_transactions", e);
             log.error("查询交易记录失败: userId={}", userId, e);

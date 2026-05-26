@@ -17,6 +17,8 @@ spring:
           # reasoning 模型对简单查询过度思考（实测 24s 中 23s 是 reasoning）。
           # low 让模型尽量短链推理，复杂问题仍能分析；如需深度推理可改 medium/high
           reasoning-effort: low
+          # 限制输出长度：财务查询回复通常 200-400 token，1024 足够覆盖表格/统计场景
+          max-tokens: 1024
     mcp:
       client:
         type: SYNC

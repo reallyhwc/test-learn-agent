@@ -89,19 +89,45 @@ public class JsonFileChatMemory implements ChatMemory {
         if (file.exists()) file.delete();
     }
 
+    /** 粗估 token 上限：中文约 2 字符/token，超出后从头部移除最早消息 */
+    private static final int MAX_ESTIMATED_TOKENS = 4000;
+
     private void trimAndPersist(String conversationId, List<Message> messages) {
         // 调用方已持有 store 锁，此处无需再加锁
+
+        // 1. 条数截断（原有逻辑）
         while (messages.size() > maxMessages) {
             messages.remove(0);
         }
-        persistToFile(conversationId, messages);
 
-        // 更新 Context 监控指标
-        if (agentMetrics != null) {
-            int count = messages.size();
-            long fileSize = getFile(conversationId).length();
-            agentMetrics.updateMemoryGauge(conversationId, count, fileSize);
+        // 2. token 估算截断：防止少量超长消息撑爆 LLM 上下文
+        while (messages.size() > 1 && estimateTokens(messages) > MAX_ESTIMATED_TOKENS) {
+            messages.remove(0);
         }
+
+        // 异步持久化：避免同步磁盘 IO 阻塞请求线程
+        int messageCount = messages.size();
+        List<Message> snapshot = new ArrayList<>(messages);
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            persistToFile(conversationId, snapshot);
+            // 写完后再更新文件大小指标，保证读到的是最新值
+            if (agentMetrics != null) {
+                long fileSize = getFile(conversationId).length();
+                agentMetrics.updateMemoryGauge(conversationId, messageCount, fileSize);
+            }
+        });
+    }
+
+    /** 粗估消息列表的 token 数（中文约 2 字符/token） */
+    private int estimateTokens(List<Message> messages) {
+        int totalChars = 0;
+        for (Message msg : messages) {
+            String text = msg.getText();
+            if (text != null) {
+                totalChars += text.length();
+            }
+        }
+        return totalChars / 2;
     }
 
     private List<Message> loadFromFile(String conversationId) {
