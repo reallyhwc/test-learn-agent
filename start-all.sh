@@ -47,10 +47,16 @@ wait_for_service() {
   return 1
 }
 
-# Check frontend dependencies
-if [ ! -d "finance-frontend/node_modules" ]; then
+# Check frontend dependencies — npm ci 确保完整安装（含 .bin 软链接）
+if [ ! -d "finance-frontend/node_modules" ] || [ ! -f "finance-frontend/node_modules/.bin/vite" ]; then
     echo "[0/4] Installing frontend dependencies..."
-    cd finance-frontend && npm install && cd ..
+    cd finance-frontend
+    if [ -f "package-lock.json" ]; then
+        npm ci 2>/dev/null || npm install
+    else
+        npm install
+    fi
+    cd ..
 fi
 
 # Start backend
