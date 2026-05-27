@@ -25,13 +25,14 @@
 ```
 已覆盖 ✅                          待探索 🔲
 ─────────────                    ─────────────
-✅ Agent 基础 (双栈)              🔲 Guardrails 防护
-✅ MCP 协议 (双栈)                🔲 Evals 评估
-✅ SSE 流式输出                   🔲 Human-in-the-Loop
-✅ 对话记忆                       🔲 Prompt 版本管理
-✅ System Prompt 决策规则          🔲 Multi-Agent
-✅ 熔断器 + 超时                  🔲 RAG 检索增强
-✅ 全栈测试体系 (~220 用例)        🔲 结构化输出
-✅ AI Coding Harness              🔲 可观测性仪表盘
-✅ Java/Python 双栈切换            🔲 本地模型支持
+✅ Agent 基础 (双栈)              🔲 Evals 评估
+✅ MCP 协议 (双栈)                🔲 Human-in-the-Loop
+✅ SSE 流式输出                   🔲 Prompt 版本管理
+✅ 对话记忆                       🔲 Multi-Agent
+✅ System Prompt 决策规则          🔲 RAG 检索增强
+✅ 熔断器 + 超时                  🔲 结构化输出
+✅ Guardrails 三层防护             🔲 可观测性仪表盘
+✅ 全栈测试体系 (~303 用例)        🔲 本地模型支持
+✅ AI Coding Harness
+✅ Java/Python 双栈切换
 ```
