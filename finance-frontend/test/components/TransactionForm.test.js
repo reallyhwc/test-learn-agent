@@ -75,10 +75,10 @@ describe('TransactionForm', () => {
     vm.form.accountId = 1
     vm.form.type = 'EXPENSE'
     vm.form.amount = 50
-    vm.form.category = '餐饮'
     vm.form.note = '午餐'
+    // categorySelection 需要 [一级分类, 二级分类] 才能通过校验
+    vm.categorySelection = ['餐饮', '午餐']
 
-    // 直接调用组件的 submit 方法
     await vm.submit()
     await flushPromises()
 
@@ -89,6 +89,7 @@ describe('TransactionForm', () => {
         type: 'EXPENSE',
         amount: 50,
         category: '餐饮',
+        subCategory: '午餐',
       })
     )
     expect(wrapper.emitted('saved')).toBeTruthy()
@@ -104,7 +105,7 @@ describe('TransactionForm', () => {
     vm.form.accountId = 1
     vm.form.type = 'INCOME'
     vm.form.amount = 100
-    vm.form.category = '理财'
+    vm.categorySelection = ['理财', '利息']
 
     await vm.submit()
     await flushPromises()

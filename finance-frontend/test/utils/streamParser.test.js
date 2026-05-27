@@ -22,10 +22,10 @@ describe('createStreamBuffer', () => {
     ])
   })
 
-  it('保留 token 内的前导空格', () => {
+  it('data: 后的单个空格被去除（SSE 规范）', () => {
     const buf = createStreamBuffer()
     expect(buf.feed('data: hello world\n\n')).toEqual([
-      { type: 'data', payload: ' hello world' },
+      { type: 'data', payload: 'hello world' },
     ])
   })
 
@@ -135,6 +135,53 @@ describe('createStreamBuffer', () => {
       { type: 'thinking', payload: '思考中' },
       { type: 'thinking', payload: '分析问题' },
       { type: 'data', payload: '这是答案' },
+    ])
+  })
+
+  // --- CRLF 兼容性测试 ---
+
+  it('CRLF (\\r\\n) 行尾的 SSE 解析', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('data: hello\r\n\r\n')).toEqual([
+      { type: 'data', payload: 'hello' },
+    ])
+  })
+
+  it('CRLF 格式的跨 chunk 合并', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('data:he')).toEqual([])
+    expect(buf.feed('llo\r\n\r\n')).toEqual([
+      { type: 'data', payload: 'hello' },
+    ])
+  })
+
+  it('CRLF 格式的 event:error 类型', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('event:error\r\ndata:连接超时\r\n\r\n')).toEqual([
+      { type: 'error', payload: '连接超时' },
+    ])
+  })
+
+  it('CRLF 格式的 event:thinking 类型', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('event:thinking\r\ndata:正在推理\r\n\r\n')).toEqual([
+      { type: 'thinking', payload: '正在推理' },
+    ])
+  })
+
+  it('混合 LF 和 CRLF 的兼容', () => {
+    const buf = createStreamBuffer()
+    const sseText = 'data:第一条\n\n' + 'data:第二条\r\n\r\n'
+    expect(buf.feed(sseText)).toEqual([
+      { type: 'data', payload: '第一条' },
+      { type: 'data', payload: '第二条' },
+    ])
+  })
+
+  it('data: 后有空格的 payload 提取（Python Agent 格式）', () => {
+    const buf = createStreamBuffer()
+    expect(buf.feed('data: hello\r\n\r\n')).toEqual([
+      { type: 'data', payload: 'hello' },
     ])
   })
 })

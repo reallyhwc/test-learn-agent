@@ -9,13 +9,13 @@
 
 ## Phase 2: 前端测试补全
 
-- [ ] 2.1 补充 `streamParser.test.js`：CRLF 格式兼容测试用例
-- [ ] 2.2 新建 `aiStore.test.js`：Agent/MCP 切换、localStorage 持久化、轮询等待
-- [ ] 2.3 新建 `AppHeader.test.js`：双 select 渲染、切换事件
-- [ ] 2.4 新建 `TransactionList.test.js`：列表渲染、筛选、分页
-- [ ] 2.5 新建 `AccountList.test.js`：账户列表、余额展示
-- [ ] 2.6 运行 `npx vitest run` 验证全部前端测试通过
-- [ ] 2.7 Git commit Phase 2
+- [x] 2.1 补充 `streamParser.test.js`：CRLF 格式兼容测试用例（+6 用例）
+- [x] 2.2 新建 `aiStore.test.js`：Agent/MCP 切换、localStorage 持久化、轮询等待（18 用例）
+- [x] 2.3 新建 `AppHeader.test.js`：双 select 渲染、切换事件（4 用例）
+- [x] 2.4 新建 `TransactionList.test.js`：列表渲染、筛选、分页（4 用例）
+- [x] 2.5 新建 `AccountList.test.js`：账户列表、余额展示（5 用例）
+- [x] 2.6 运行 `npx vitest run` 验证全部前端测试通过 ✅ 14 files, 109 tests
+- [x] 2.7 Git commit Phase 2
 
 ## Phase 3: Java Agent 测试补全
 
