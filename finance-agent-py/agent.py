@@ -30,10 +30,15 @@ class FinanceAgent:
     async def initialize(self):
         """连接 MCP Server 并创建 Agent。"""
         llm_config = get_llm_config()
+        # ChatOpenAI 需要 base_url 以 /v1 结尾；Spring AI 则会自动追加 /v1
+        # 统一处理：.env 中不带 /v1，Python 侧自动补上
+        base_url = llm_config["base_url"].rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url += "/v1"
         self._model = ChatOpenAI(
             model=llm_config["model"],
             api_key=llm_config["api_key"],
-            base_url=llm_config["base_url"],
+            base_url=base_url,
             temperature=0.1,
         )
         await self._connect_mcp()

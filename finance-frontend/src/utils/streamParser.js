@@ -17,6 +17,8 @@ export function createStreamBuffer() {
   return {
     feed(chunk) {
       buffer += chunk
+      // 统一 CRLF → LF，兼容 Python（sse-starlette）和 Java 两种 SSE 格式
+      buffer = buffer.replace(/\r\n/g, '\n')
       const events = []
       let eventEnd
       while ((eventEnd = buffer.indexOf('\n\n')) !== -1) {
@@ -26,7 +28,9 @@ export function createStreamBuffer() {
         let type = 'data'
         for (const line of eventBlock.split('\n')) {
           if (line.startsWith('data:')) {
-            dataLines.push(line.slice(5))
+            // 兼容 "data:xxx" 和 "data: xxx" 两种格式
+            const payload = line.charAt(5) === ' ' ? line.slice(6) : line.slice(5)
+            dataLines.push(payload)
           } else if (line.startsWith('event:')) {
             const evt = line.slice(6).trim()
             if (EVENT_TYPES.has(evt)) type = evt
