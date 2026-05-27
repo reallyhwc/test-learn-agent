@@ -10,6 +10,7 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 from config_loader import get_llm_config
+from guardrails import REJECTION_REPLY, audit_tool_calls, is_prompt_injection
 from memory_manager import MemoryManager
 from system_prompt import build_system_prompt, fetch_account_summary
 
@@ -75,6 +76,11 @@ class FinanceAgent:
 
     async def chat(self, user_id: str, message: str) -> str:
         """同步对话，返回完整响应文本。"""
+        # 第一层防护: Prompt Injection 检测
+        if is_prompt_injection(message):
+            logger.warning("InputGuardrail 拦截: userId=%s", user_id)
+            return REJECTION_REPLY
+
         memory = MemoryManager(user_id)
         account_summary = await fetch_account_summary(user_id)
         system_prompt = build_system_prompt(user_id, memory, account_summary)
@@ -93,6 +99,9 @@ class FinanceAgent:
             logger.warning("Agent 调用超时: userId=%s", user_id)
             return "AI 响应超时，请简化问题或稍后重试"
 
+        # 第二层防护: 工具调用审计
+        audit_tool_calls(result.get("messages", []), user_id)
+
         output = ""
         for m in reversed(result.get("messages", [])):
             if hasattr(m, "content") and m.type == "ai":
@@ -106,6 +115,12 @@ class FinanceAgent:
         self, user_id: str, message: str
     ) -> AsyncIterator[str]:
         """流式对话，逐 token yield。"""
+        # 第一层防护: Prompt Injection 检测
+        if is_prompt_injection(message):
+            logger.warning("InputGuardrail 拦截(stream): userId=%s", user_id)
+            yield REJECTION_REPLY
+            return
+
         memory = MemoryManager(user_id)
         account_summary = await fetch_account_summary(user_id)
         system_prompt = build_system_prompt(user_id, memory, account_summary)

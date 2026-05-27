@@ -18,6 +18,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 第二层防护 — 工具调用审计 Advisor。
@@ -50,7 +52,7 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
     private final Map<String, AtomicInteger> writeCountBySession = new ConcurrentHashMap<>();
 
     /** 存储在 context 中的 userId key */
-    static final String CONTEXT_USER_ID = "guardrail.userId";
+    public static final String CONTEXT_USER_ID = "guardrail.userId";
 
     @Override
     public int getOrder() {
@@ -58,11 +60,50 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
         return Ordered.HIGHEST_PRECEDENCE + 300;
     }
 
+    /** System Prompt 中 userId 的标记格式：「工具调用中 userId 必须使用: xxx」 */
+    private static final Pattern USER_ID_IN_PROMPT = Pattern.compile(
+            "工具调用中 userId 必须使用:\\s*(\\S+)");
+
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
-        // 从 context 中提取 userId（由 ChatController 在调用前写入）
-        // 如果 context 中没有，尝试从 System Prompt 中提取
+        // 优先从 AdvisorSpec.param() 传入的 context 中读取 userId
+        String userId = null;
+        Object ctxUserId = request.context().get(CONTEXT_USER_ID);
+        if (ctxUserId != null) {
+            userId = ctxUserId.toString();
+        }
+
+        // 兜底：从 System Prompt 中解析 userId
+        if (userId == null) {
+            userId = extractUserIdFromSystemPrompt(request);
+        }
+
+        // 将 userId 写入 context，供 after() 阶段使用
+        if (userId != null) {
+            return request.mutate()
+                    .context(CONTEXT_USER_ID, userId)
+                    .build();
+        }
         return request;
+    }
+
+    /**
+     * 从 System Prompt 中解析 userId。
+     * System Prompt 格式：「工具调用中 userId 必须使用: xxx」
+     */
+    private String extractUserIdFromSystemPrompt(ChatClientRequest request) {
+        for (var message : request.prompt().getInstructions()) {
+            if (message instanceof org.springframework.ai.chat.messages.SystemMessage sysMsg) {
+                String text = sysMsg.getText();
+                if (text != null) {
+                    Matcher matcher = USER_ID_IN_PROMPT.matcher(text);
+                    if (matcher.find()) {
+                        return matcher.group(1);
+                    }
+                }
+            }
+        }
+        return null;
     }
 
     @Override

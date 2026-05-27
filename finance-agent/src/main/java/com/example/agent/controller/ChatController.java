@@ -94,8 +94,10 @@ public class ChatController {
                     chatClient.prompt()
                             .system(systemPrompt)
                             .user(message)
-                            .advisors(inputGuardrailAdvisor, advisor,
-                                    toolCallGuardrailAdvisor, outputGuardrailAdvisor)
+                            .advisors(spec -> spec
+                                    .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
+                                    .advisors(inputGuardrailAdvisor, advisor,
+                                            toolCallGuardrailAdvisor, outputGuardrailAdvisor))
                             .call()
                             .chatResponse()
             ).get(SYNC_CHAT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -159,8 +161,10 @@ public class ChatController {
             var subscription = chatClient.prompt()
                     .system(systemPrompt)
                     .user(message)
-                    .advisors(inputGuardrailAdvisor, advisor,
-                            toolCallGuardrailAdvisor, outputGuardrailAdvisor)
+                    .advisors(spec -> spec
+                            .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
+                            .advisors(inputGuardrailAdvisor, advisor,
+                                    toolCallGuardrailAdvisor, outputGuardrailAdvisor))
                     .stream()
                     .chatResponse()
                     .subscribe(

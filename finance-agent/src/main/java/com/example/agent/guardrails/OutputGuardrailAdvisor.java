@@ -46,6 +46,9 @@ public class OutputGuardrailAdvisor implements BaseAdvisor {
         return request;
     }
 
+    /** 单笔金额告警阈值：超过此值记录 WARN */
+    private static final BigDecimal LARGE_AMOUNT_THRESHOLD = new BigDecimal("1000000");
+
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         ChatResponse chatResponse = response.chatResponse();
@@ -60,8 +63,31 @@ public class OutputGuardrailAdvisor implements BaseAdvisor {
 
         // 提取回复中的金额
         List<BigDecimal> replyAmounts = extractAmounts(replyText);
-        if (!replyAmounts.isEmpty()) {
-            log.debug("OutputGuardrail: LLM 回复中检测到 {} 个金额值: {}", replyAmounts.size(), replyAmounts);
+        if (replyAmounts.isEmpty()) {
+            return response;
+        }
+
+        log.debug("OutputGuardrail: LLM 回复中检测到 {} 个金额值: {}", replyAmounts.size(), replyAmounts);
+
+        // 异常大金额告警
+        for (BigDecimal amount : replyAmounts) {
+            if (amount.compareTo(LARGE_AMOUNT_THRESHOLD) > 0) {
+                log.warn("OutputGuardrail: LLM 回复中出现异常大金额 {}，请人工核实", amount);
+            }
+        }
+
+        // 从 context 中获取工具返回的金额数据（由 ToolCallGuardrailAdvisor 或外部写入）
+        Object toolAmountsObj = response.context().get("guardrail.toolAmounts");
+        if (toolAmountsObj instanceof List<?> rawList) {
+            List<BigDecimal> toolAmounts = new ArrayList<>();
+            for (Object item : rawList) {
+                if (item instanceof BigDecimal bd) {
+                    toolAmounts.add(bd);
+                }
+            }
+            if (!toolAmounts.isEmpty()) {
+                hasAmountHallucination(replyAmounts, toolAmounts);
+            }
         }
 
         return response;
