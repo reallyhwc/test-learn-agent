@@ -4,7 +4,6 @@
 第二层: 工具调用审计 (工具防护)
 第三层: 输出金额幻觉检测 (输出防护)
 """
-import json
 import logging
 import re
 from collections import defaultdict
@@ -64,6 +63,7 @@ def is_prompt_injection(user_message: str) -> bool:
 _WRITE_TOOLS = {"add_transaction"}
 _MAX_WRITE_OPS_PER_SESSION = 5
 _MAX_AMOUNT = Decimal("1000000")
+_MAX_SESSION_ENTRIES = 1000
 
 # 会话级写操作计数
 _write_counts: dict[str, int] = defaultdict(int)
@@ -115,7 +115,10 @@ def _audit_single_tool_call(tool_name: str, args: dict, session_user_id: str) ->
             except InvalidOperation:
                 logger.debug("ToolCallGuardrail: 金额解析失败: %s", amount_str)
 
-        # 写操作频率监控
+        # 写操作频率监控（防止内存泄漏：超过上限时清空）
+        if len(_write_counts) > _MAX_SESSION_ENTRIES:
+            logger.info("ToolCallGuardrail: 写操作计数 dict 达到上限 %d，执行清理", _MAX_SESSION_ENTRIES)
+            _write_counts.clear()
         _write_counts[session_user_id] += 1
         if _write_counts[session_user_id] > _MAX_WRITE_OPS_PER_SESSION:
             logger.warning(

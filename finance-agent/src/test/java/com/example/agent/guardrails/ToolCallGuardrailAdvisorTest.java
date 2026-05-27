@@ -1,12 +1,15 @@
 package com.example.agent.guardrails;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.chat.client.ChatClientRequest;
 import org.springframework.ai.chat.client.ChatClientResponse;
 import org.springframework.ai.chat.messages.AssistantMessage;
+import org.springframework.ai.chat.messages.SystemMessage;
+import org.springframework.ai.chat.messages.UserMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.chat.prompt.Prompt;
 
 import java.util.List;
 import java.util.Map;
@@ -132,6 +135,66 @@ class ToolCallGuardrailAdvisorTest {
             advisor.after(response, null);
         }
         // 读操作不应触发频率限制
+    }
+
+    // ========== before() 测试：userId 解析与 context 透传 ==========
+
+    @Test
+    void shouldExtractUserIdFromContextParam() {
+        ChatClientRequest request = ChatClientRequest.builder()
+                .prompt(new Prompt(List.of(new UserMessage("我的余额"))))
+                .context(ToolCallGuardrailAdvisor.CONTEXT_USER_ID, "ctx-user")
+                .build();
+
+        ChatClientRequest result = advisor.before(request, null);
+
+        assertThat(result.context().get(ToolCallGuardrailAdvisor.CONTEXT_USER_ID))
+                .isEqualTo("ctx-user");
+    }
+
+    @Test
+    void shouldExtractUserIdFromSystemPrompt() {
+        String systemPrompt = "你是小财。工具调用中 userId 必须使用: test-user-123\n其他内容";
+        ChatClientRequest request = ChatClientRequest.builder()
+                .prompt(new Prompt(List.of(
+                        new SystemMessage(systemPrompt),
+                        new UserMessage("查余额"))))
+                .build();
+
+        ChatClientRequest result = advisor.before(request, null);
+
+        assertThat(result.context().get(ToolCallGuardrailAdvisor.CONTEXT_USER_ID))
+                .isEqualTo("test-user-123");
+    }
+
+    @Test
+    void shouldPreferContextParamOverSystemPrompt() {
+        String systemPrompt = "工具调用中 userId 必须使用: prompt-user";
+        ChatClientRequest request = ChatClientRequest.builder()
+                .prompt(new Prompt(List.of(
+                        new SystemMessage(systemPrompt),
+                        new UserMessage("查余额"))))
+                .context(ToolCallGuardrailAdvisor.CONTEXT_USER_ID, "param-user")
+                .build();
+
+        ChatClientRequest result = advisor.before(request, null);
+
+        // 应优先使用 context param 的值
+        assertThat(result.context().get(ToolCallGuardrailAdvisor.CONTEXT_USER_ID))
+                .isEqualTo("param-user");
+    }
+
+    @Test
+    void shouldReturnUnmodifiedRequestWhenNoUserId() {
+        ChatClientRequest request = ChatClientRequest.builder()
+                .prompt(new Prompt(List.of(new UserMessage("你好"))))
+                .build();
+
+        ChatClientRequest result = advisor.before(request, null);
+
+        // context 中不应有 userId
+        assertThat(result.context().containsKey(ToolCallGuardrailAdvisor.CONTEXT_USER_ID))
+                .isFalse();
     }
 
     // ========== Helper ==========

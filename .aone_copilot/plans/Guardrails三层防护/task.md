@@ -26,8 +26,8 @@
 - [x] Git commit Phase 4
 
 ## Phase 5: 文档与收尾
-- [ ] 更新 `docs/roadmap/01-guardrails.md` 状态标记
-- [ ] Git commit Phase 5
+- [x] 更新 `docs/roadmap/01-guardrails.md` 状态标记
+- [x] Git commit Phase 5
 
 ---
 生成时间: 2026/5/27 17:52:29

@@ -34,6 +34,9 @@ public class OutputGuardrailAdvisor implements BaseAdvisor {
             "¥\\s?([\\d,]+(?:\\.\\d{1,2})?)|([\\d,]+(?:\\.\\d{1,2})?)\\s*元"
     );
 
+    /** 单笔金额告警阈值：超过此值记录 WARN */
+    private static final BigDecimal LARGE_AMOUNT_THRESHOLD = new BigDecimal("1000000");
+
     @Override
     public int getOrder() {
         // 最后执行，在所有其他 Advisor 之后
@@ -45,9 +48,6 @@ public class OutputGuardrailAdvisor implements BaseAdvisor {
         // 输出防护不需要前处理
         return request;
     }
-
-    /** 单笔金额告警阈值：超过此值记录 WARN */
-    private static final BigDecimal LARGE_AMOUNT_THRESHOLD = new BigDecimal("1000000");
 
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {

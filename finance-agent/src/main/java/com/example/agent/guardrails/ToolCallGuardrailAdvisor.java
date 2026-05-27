@@ -48,8 +48,12 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
     /** 单笔金额上限 */
     private static final BigDecimal MAX_AMOUNT = new BigDecimal("1000000");
 
-    /** 每个会话（conversationId）的写操作计数 */
-    private final Map<String, AtomicInteger> writeCountBySession = new ConcurrentHashMap<>();
+    /**
+     * 每个会话（conversationId）的写操作计数。
+     * 当 entry 超过上限时，清空整个 map 防止内存泄漏。
+     */
+    private static final int MAX_SESSION_ENTRIES = 1000;
+    private final ConcurrentHashMap<String, AtomicInteger> writeCountBySession = new ConcurrentHashMap<>();
 
     /** 存储在 context 中的 userId key */
     public static final String CONTEXT_USER_ID = "guardrail.userId";
@@ -191,10 +195,15 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
 
     /**
      * 监控写操作频率。
+     * 当 map 超过容量上限时清空，防止长期运行内存泄漏。
      */
     private void checkWriteFrequency(String sessionUserId, String toolName) {
         if (sessionUserId == null) {
             return;
+        }
+        if (writeCountBySession.size() > MAX_SESSION_ENTRIES) {
+            log.info("ToolCallGuardrail: 写操作计数 map 达到上限 {}，执行清理", MAX_SESSION_ENTRIES);
+            writeCountBySession.clear();
         }
         int count = writeCountBySession
                 .computeIfAbsent(sessionUserId, k -> new AtomicInteger(0))

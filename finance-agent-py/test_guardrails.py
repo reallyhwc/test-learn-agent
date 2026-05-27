@@ -7,7 +7,6 @@ from guardrails import (
     check_amount_hallucination,
     extract_amounts,
     is_prompt_injection,
-    reset_write_count,
 )
 
 
