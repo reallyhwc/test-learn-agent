@@ -2,7 +2,6 @@
 import asyncio
 import logging
 import re
-from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,21 +22,7 @@ SYNC_TIMEOUT = 60
 agent: FinanceAgent | None = None
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    global agent
-    config = get_agent_config()
-    mcp_port = config["mcp_port"]
-    mcp_url = f"http://localhost:{mcp_port}/sse"
-    logger.info("连接 MCP Server: %s", mcp_url)
-    agent = FinanceAgent(mcp_sse_url=mcp_url)
-    await agent.initialize()
-    yield
-    if agent:
-        await agent.close()
-
-
-app = FastAPI(title="finance-agent-py", lifespan=lifespan)
+app = FastAPI(title="finance-agent-py")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

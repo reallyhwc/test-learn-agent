@@ -21,6 +21,7 @@ class FinanceAgent:
     def __init__(self, mcp_sse_url: str = "http://localhost:8083/sse"):
         self.mcp_sse_url = mcp_sse_url
         self._session: ClientSession | None = None
+        self._sse_context = None
         self._agent = None
         self._model = None
         self._tools: list = []
@@ -36,7 +37,9 @@ class FinanceAgent:
         )
 
         # 连接 MCP Server 并加载工具
-        self._read, self._write = await sse_client(self.mcp_sse_url).__aenter__()
+        # 保存上下文管理器引用，防止 GC 回收触发 GeneratorExit
+        self._sse_context = sse_client(self.mcp_sse_url)
+        self._read, self._write = await self._sse_context.__aenter__()
         self._session = ClientSession(self._read, self._write)
         await self._session.__aenter__()
         await self._session.initialize()
@@ -49,6 +52,8 @@ class FinanceAgent:
     async def close(self):
         if self._session:
             await self._session.__aexit__(None, None, None)
+        if self._sse_context:
+            await self._sse_context.__aexit__(None, None, None)
 
     async def chat(self, user_id: str, message: str) -> str:
         """同步对话，返回完整响应文本。"""
