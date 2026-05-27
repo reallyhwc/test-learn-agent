@@ -320,3 +320,36 @@ public class HallucinationDetector {
 **第五步（4h）**：写攻击测试集，验证防护效果
 
 完成后，你可以在 README 中加上"三层 Guardrails 防护"的架构图——这是非常有说服力的技术展示。
+
+---
+
+## 实现状态
+
+> **状态：✅ 已完成**
+> **完成日期：2026-05-27**
+
+| 阶段 | 内容 | 状态 | 关键文件 |
+|------|------|:----:|---------|
+| Phase 1 | Java 输入防护 | ✅ | `PromptInjectionDetector.java` / `InputGuardrailAdvisor.java` |
+| Phase 2 | Java 工具调用防护 | ✅ | `ToolCallGuardrailAdvisor.java` |
+| Phase 3 | Java 输出防护 | ✅ | `OutputGuardrailAdvisor.java` |
+| Phase 4 | Python Agent Guardrails | ✅ | `guardrails.py` / `agent.py` |
+| 测试 | Java 45 + Python 36 = 81 用例 | ✅ | `*GuardrailAdvisorTest.java` / `test_guardrails.py` |
+
+### 已实现的防护能力
+
+**第一层 — 输入防护（Prompt Injection 检测）**
+- 12 种中英文注入模式的正则检测（指令覆盖、角色篡改、System Prompt 提取、DAN/jailbreak）
+- Java 侧通过 `BaseAdvisor.before()` 在 ChatMemory 之前拦截，替换 System Prompt 为拒绝指令
+- Python 侧在 `chat()` 和 `chat_stream()` 入口处直接拦截
+
+**第二层 — 工具调用防护（审计 + 告警）**
+- userId 篡改检测：比对工具参数中的 userId 与会话 userId
+- 金额范围校验：`add_transaction` 金额 0~100 万
+- 写操作频率监控：单会话上限 5 次
+- Java 侧通过 `BaseAdvisor.before()` 从 System Prompt 解析 userId 写入 context，`after()` 审计
+
+**第三层 — 输出防护（幻觉检测）**
+- 金额提取：支持 `¥xx,xxx.xx` 和 `xxx元` 两种格式
+- 异常大金额告警：超过 100 万时记录 WARN
+- 幻觉检测：LLM 回复金额与工具数据比对（容差 0.01）
