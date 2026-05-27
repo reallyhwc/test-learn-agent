@@ -27,12 +27,12 @@
 
 ## Phase 4: Python Agent 测试补全
 
-- [ ] 4.1 新建 `test_config_loader.py`：环境变量优先级、缺失 key 异常、YAML 替换
-- [ ] 4.2 新建 `test_memory_manager.py`：CRUD、滚动淘汰、持久化、多用户
-- [ ] 4.3 新建 `test_system_prompt.py`：prompt 构建、账户摘要格式化
-- [ ] 4.4 扩展 `test_chat_server.py`：chat/stream/switch-mcp/sanitize 补充用例
-- [ ] 4.5 运行 `python -m pytest tests/ -v` 验证全部 Python 测试通过
-- [ ] 4.6 Git commit Phase 4
+- [x] 4.1 新建 `test_config_loader.py`：环境变量优先级、缺失 key 异常、YAML 替换（5 用例）
+- [x] 4.2 新建 `test_memory_manager.py`：CRUD、滚动淘汰、持久化、多用户（8 用例）
+- [x] 4.3 新建 `test_system_prompt.py`：prompt 构建、账户摘要格式化（10 用例）
+- [x] 4.4 扩展 `test_chat_server.py`：memory_count/switch-mcp/sanitize 补充用例（+6 用例）
+- [x] 4.5 运行 `python -m pytest tests/ -v` 验证全部 Python 测试通过 ✅ 33 passed
+- [x] 4.6 Git commit Phase 4
 
 ---
 生成时间: 2026/5/27 15:38:06

@@ -71,3 +71,56 @@ async def test_memory_clear(async_client):
     assert resp.status_code == 200
     data = resp.json()
     assert data["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_memory_count(async_client):
+    """验证记忆计数端点。"""
+    resp = await async_client.get("/api/memory/count?userId=nonexistent")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["count"] == 0
+    assert data["maxMessages"] == 20
+
+
+@pytest.mark.asyncio
+async def test_switch_mcp_invalid_type(async_client):
+    """验证不支持的 MCP 类型返回 400。"""
+    resp = await async_client.post(
+        "/api/switch-mcp",
+        json={"mcpType": "invalid"},
+    )
+    assert resp.status_code == 400
+    assert "不支持" in resp.json()["detail"]
+
+
+# ──────────── _sanitize_user_id 边界值 ────────────
+
+def test_sanitize_user_id_normal():
+    """正常 userId 不做修改。"""
+    from chat_server import _sanitize_user_id
+    assert _sanitize_user_id("user-001") == "user-001"
+    assert _sanitize_user_id("test_user") == "test_user"
+
+
+def test_sanitize_user_id_empty():
+    """空值 / None 应返回 'default'。"""
+    from chat_server import _sanitize_user_id
+    assert _sanitize_user_id("") == "default"
+    assert _sanitize_user_id(None) == "default"
+    assert _sanitize_user_id("   ") == "default"
+
+
+def test_sanitize_user_id_special_chars():
+    """特殊字符应被移除。"""
+    from chat_server import _sanitize_user_id
+    result = _sanitize_user_id("user@#$%^&*123")
+    assert result == "user123"
+
+
+def test_sanitize_user_id_too_long():
+    """超长 userId 应被截断到 64 字符。"""
+    from chat_server import _sanitize_user_id
+    long_id = "a" * 100
+    result = _sanitize_user_id(long_id)
+    assert len(result) == 64
