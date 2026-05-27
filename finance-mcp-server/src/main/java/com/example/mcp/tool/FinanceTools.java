@@ -20,6 +20,36 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
+/**
+ * 【MCP 工具层】—— 将 Backend REST API 包装为 MCP 协议的工具供 LLM 调用。
+ *
+ * <p>本类定义了 5 个 {@code @McpTool} 方法，Spring AI MCP Server 启动时自动扫描注册。
+ * Agent 通过 SSE 协议连接本 Server，LLM 决策后自动调用这些工具。
+ *
+ * <h3>工具清单</h3>
+ * <ul>
+ *   <li>{@link #queryBalance} — 查询单个账户余额（GET /api/accounts/{id}/balance）</li>
+ *   <li>{@link #listTransactions} — 查询交易明细列表（GET /api/transactions）</li>
+ *   <li>{@link #summarizeTransactions} — 按分类汇总交易（GET /api/transactions/summary）</li>
+ *   <li>{@link #addTransaction} — 添加一笔交易（POST /api/transactions）</li>
+ *   <li>{@link #listAccounts} — 查询用户全部账户（GET /api/accounts）</li>
+ * </ul>
+ *
+ * <h3>调用链路</h3>
+ * <pre>
+ * 前端 → Agent(ChatController) → LLM 决策 tool_call → MCP 协议(SSE) → 本类方法 → RestClient → Backend(:8080)
+ * </pre>
+ *
+ * <h3>设计要点</h3>
+ * <ul>
+ *   <li>每个方法内部捕获所有异常，返回友好字符串（禁止抛异常，会中断 MCP 协议）</li>
+ *   <li>每个方法记录 Micrometer 指标（mcp.tool.calls.total / duration / errors）</li>
+ *   <li>URI 构建统一使用 {@code UriComponentsBuilder}，防止中文二次编码</li>
+ *   <li>userId 通过 {@link #validateUserId} 校验，防止路径穿越等安全问题</li>
+ * </ul>
+ *
+ * @see com.example.agent.controller.ChatController — Agent 侧的 MCP Client 消费方
+ */
 @Slf4j
 @Component
 public class FinanceTools {

@@ -15,12 +15,31 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 第一层防护 — 输入防护 Advisor。
- * <p>
- * 在消息到达 LLM 之前检测 Prompt Injection 攻击。
+ * 【第一层防护 — 输入防护 Advisor】
+ *
+ * <p>在消息到达 LLM 之前检测 Prompt Injection 攻击。
  * 如果检测到注入，将 System Prompt 替换为拒绝指令，使 LLM 返回安全的拒绝消息。
- * <p>
- * 执行顺序：最高优先级（在 ChatMemory Advisor 之前），确保注入消息不会被写入对话记忆。
+ *
+ * <h3>在 Advisor 链中的位置</h3>
+ * <pre>
+ * before 阶段（order 升序执行）:
+ *   ① InputGuardrailAdvisor (HIGHEST+100) ← 你在这里
+ *   ② ToolCallGuardrailAdvisor (HIGHEST+300)
+ *   ③ MessageChatMemoryAdvisor (HIGHEST+1000)
+ *   ④ OutputGuardrailAdvisor (LOWEST-100, before 空操作)
+ *   ⑤ ChatModelCallAdvisor (LOWEST, 调用 LLM)
+ * </pre>
+ *
+ * <p>order = HIGHEST_PRECEDENCE + 100，在 ChatMemory (HIGHEST+1000) <b>之前</b>执行，
+ * 确保注入消息不会被写入对话记忆。
+ *
+ * <h3>工作原理</h3>
+ * <p>实现 {@code BaseAdvisor} 接口，Spring AI 的 Advisor 链会自动调用 {@code before()} 和 {@code after()}。
+ * 类似 Spring MVC 的 {@code HandlerInterceptor}：before 拦截请求，after 处理响应。
+ *
+ * @see PromptInjectionDetector — 12 种中英文注入模式的正则检测
+ * @see ToolCallGuardrailAdvisor — 第二层：工具调用审计
+ * @see OutputGuardrailAdvisor — 第三层：输出幻觉检测
  */
 @Slf4j
 @Component

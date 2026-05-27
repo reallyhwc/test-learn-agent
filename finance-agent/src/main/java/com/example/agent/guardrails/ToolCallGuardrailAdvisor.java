@@ -22,16 +22,34 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 第二层防护 — 工具调用审计 Advisor。
- * <p>
- * 在 LLM 返回结果后审计工具调用记录：
+ * 【第二层防护 — 工具调用审计 Advisor】
+ *
+ * <h3>在 Advisor 链中的位置</h3>
+ * <pre>
+ * before 阶段: ① InputGuardrail → ② ToolCallGuardrail(你在这里) → ③ ChatMemory → ④ OutputGuardrail → ⑤ LLM
+ * after 阶段:  ⑤ LLM → ④ OutputGuardrail → ③ ChatMemory → ② ToolCallGuardrail(你在这里) → ① InputGuardrail
+ * </pre>
+ *
+ * <h3>工作原理</h3>
  * <ul>
- *   <li>userId 篡改检测：检查工具参数中的 userId 是否与会话 userId 一致</li>
- *   <li>金额合理性校验：add_transaction 的金额是否在合理范围内</li>
- *   <li>写操作频率监控：单次会话中写操作次数是否过多</li>
+ *   <li><b>before()</b>: 从 context param 或 System Prompt 中解析 userId，写入 context 供 after() 使用</li>
+ *   <li><b>after()</b>: 遍历 LLM 返回的 tool_call 列表，审计每个工具调用：
+ *     <ul>
+ *       <li>userId 篡改检测：比对工具参数中的 userId 与会话 userId</li>
+ *       <li>金额范围校验：add_transaction 金额 0~100万</li>
+ *       <li>写操作频率监控：单会话上限 5 次</li>
+ *     </ul>
+ *   </li>
  * </ul>
- * <p>
- * 当前阶段以日志告警为主，为后续拦截机制积累数据。
+ *
+ * <h3>Context 传递机制</h3>
+ * <p>{@code ChatController} 通过 {@code advisors(spec -> spec.param(CONTEXT_USER_ID, userId))}
+ * 将 userId 写入 context。{@code before()} 读取并透传到 {@code after()} 阶段。</p>
+ *
+ * <p>当前阶段以日志告警为主（WARN 级别），不阻断请求，为后续拦截机制积累数据。</p>
+ *
+ * @see InputGuardrailAdvisor — 第一层：Prompt Injection 检测
+ * @see OutputGuardrailAdvisor — 第三层：输出幻觉检测
  */
 @Slf4j
 @Component

@@ -30,6 +30,38 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 【AI 对话核心控制器】—— 整个 Agent 的请求处理中枢。
+ *
+ * <h3>两条数据通路</h3>
+ * <ul>
+ *   <li><b>同步</b>: POST /api/chat → {@link #chat(ChatRequest)} → ChatClient.call() → 返回完整回复</li>
+ *   <li><b>流式</b>: POST /api/chat/stream → {@link #chatStream(ChatRequest, HttpServletResponse)} → ChatClient.stream() → SSE 逐 token 推送</li>
+ * </ul>
+ *
+ * <h3>每次请求的处理流程</h3>
+ * <pre>
+ * 1. 参数清洗 → sanitizeUserId() / validateAndTrimMessage()
+ * 2. 构建 System Prompt → buildSystemPrompt(userId) — 注入账户摘要 + 决策规则
+ * 3. 组装 Advisor 链（类似 Spring MVC Filter Chain）：
+ *    InputGuardrailAdvisor(注入检测) → ChatMemoryAdvisor(对话记忆) → ToolCallGuardrailAdvisor(工具审计) → OutputGuardrailAdvisor(幻觉检测)
+ * 4. 调用 LLM：chatClient.prompt().system().user().advisors().call()/stream()
+ * 5. LLM 自主决定是否调用 MCP 工具（query_balance/list_transactions/...）
+ * 6. 返回结果 + Token 统计
+ * </pre>
+ *
+ * <h3>核心依赖注入</h3>
+ * <ul>
+ *   <li>{@code ChatClient.Builder} — Spring AI 自动配置，内含 LLM 连接信息</li>
+ *   <li>{@code List<ToolCallbackProvider>} — MCP Client 自动发现的工具回调</li>
+ *   <li>{@code ChatMemory} — 对话记忆存储（JsonFileChatMemory, max 20 轮）</li>
+ *   <li>三个 Guardrail Advisor — 输入/工具调用/输出三层防护</li>
+ * </ul>
+ *
+ * @see com.example.agent.guardrails.InputGuardrailAdvisor — Prompt Injection 检测（order: HIGHEST+100）
+ * @see com.example.agent.guardrails.ToolCallGuardrailAdvisor — 工具调用审计（order: HIGHEST+300）
+ * @see com.example.agent.guardrails.OutputGuardrailAdvisor — 金额幻觉检测（order: LOWEST-100）
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api")

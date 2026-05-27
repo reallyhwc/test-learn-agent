@@ -16,12 +16,32 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 第三层防护 — 输出防护 Advisor。
- * <p>
- * 在 LLM 回复返回给用户之前，检测金额一致性（幻觉检测）。
- * 当 LLM 回复中的金额与工具返回的原始数据不一致时记录告警日志。
- * <p>
- * 当前阶段仅日志告警，不拦截（避免影响正常流式输出）。
+ * 【第三层防护 — 输出幻觉检测 Advisor】
+ *
+ * <h3>在 Advisor 链中的位置</h3>
+ * <pre>
+ * after 阶段执行顺序（order 降序）:
+ *   ① OutputGuardrailAdvisor (LOWEST-100) ← 你在这里，after 最先执行
+ *   ② MessageChatMemoryAdvisor (HIGHEST+1000)
+ *   ③ ToolCallGuardrailAdvisor (HIGHEST+300)
+ *   ④ InputGuardrailAdvisor (HIGHEST+100)
+ * </pre>
+ *
+ * <h3>工作原理</h3>
+ * <p>{@code before()} 空操作。{@code after()} 在 LLM 回复返回给用户之前：</p>
+ * <ol>
+ *   <li>用正则从回复文本中提取金额（¥xx,xxx.xx 和 xxx元 格式）</li>
+ *   <li>异常大金额告警：超过 100 万时记录 WARN</li>
+ *   <li>幻觉检测：与 context 中的工具返回金额比对，容差 0.01</li>
+ * </ol>
+ *
+ * <p>流式场景中 {@code after()} 仅在 {@code AdvisorUtils.onFinishReason()} 为 true 时触发
+ * （即流结束时才做一次完整检测）。</p>
+ *
+ * <p>当前阶段仅日志告警，不拦截（避免影响正常流式输出）。</p>
+ *
+ * @see InputGuardrailAdvisor — 第一层：Prompt Injection 检测
+ * @see ToolCallGuardrailAdvisor — 第二层：工具调用审计
  */
 @Slf4j
 @Component
