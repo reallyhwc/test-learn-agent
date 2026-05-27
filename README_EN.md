@@ -399,7 +399,7 @@ All queries go through the MCP tool chain. The AI never fabricates data — the 
 ## Test Suite
 
 ```
-Coverage: Backend ~46 tests + Frontend 70 tests + MCP ~16 tests
+Full-stack coverage: Backend ~46 tests + Frontend 109 tests + MCP ~16 tests + Agent Java 14 tests + Python 33 tests
 ```
 
 | Layer | Framework | Coverage |
@@ -407,20 +407,28 @@ Coverage: Backend ~46 tests + Frontend 70 tests + MCP ~16 tests
 | **Backend Controller** | Spring MockMvc | Account/Transaction CRUD, pagination, date range, aggregation |
 | **Backend Service** | JUnit 5 | CSV read/write, multi-user isolation, balance calculation |
 | **Backend Exceptions** | MockMvc | GlobalExceptionHandler unified responses |
-| **MCP Tools** | MockRestServiceServer | 5 tools normal/error paths, input validation, JSON fallback |
-| **Frontend Components** | Vitest + Vue Test Utils | ChatPanel, ChatMessage, TransactionForm |
-| **Frontend Store** | Vitest | Pinia userStore persistence, user switching |
-| **Frontend Utils** | Vitest | API wrapper, SSE stream parsing, Markdown rendering, chart extraction |
+| **MCP Tools (Java)** | MockRestServiceServer | 5 tools normal/error paths, input validation, JSON fallback |
+| **Agent (Java)** | JUnit 5 + MockMvc | Circuit breaker state transitions, feedback endpoint, memory management |
+| **Frontend Components** | Vitest + Vue Test Utils | ChatPanel, ChatMessage, TransactionForm, AppHeader, TransactionList, AccountList |
+| **Frontend Store** | Vitest | Pinia userStore persistence + aiStore Agent/MCP switching |
+| **Frontend Utils** | Vitest | API wrapper, SSE stream parsing (incl. CRLF compat), Markdown rendering, chart extraction |
+| **Python Agent** | pytest + pytest-asyncio | Config loading, memory management, System Prompt, SSE endpoints, userId sanitization |
 | **CI** | GitHub Actions | Automated tests + ESLint + coverage + OWASP security scan |
 
 Run tests:
 ```bash
-# Frontend
+# Frontend (109 tests)
 cd finance-frontend && npx vitest run
 
 # Backend (including MCP Server)
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
+
+# Java Agent
+cd finance-agent && ./mvnw test
+
+# Python Agent (33 tests)
+cd finance-agent-py && python -m pytest tests/ -v
 ```
 
 ---

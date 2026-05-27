@@ -2,12 +2,14 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Java 17](https://img.shields.io/badge/Java-17-orange)](https://adoptium.net/)
+[![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue)](https://www.python.org/)
 [![Spring Boot 3.4](https://img.shields.io/badge/Spring_Boot-3.4-green)](https://spring.io/projects/spring-boot)
 [![Spring AI 1.1](https://img.shields.io/badge/Spring_AI-1.1-blue)](https://docs.spring.io/spring-ai/)
+[![LangChain](https://img.shields.io/badge/LangChain-0.3+-orange)](https://www.langchain.com/)
 [![Vue 3](https://img.shields.io/badge/Vue-3-4FC08D)](https://vuejs.org/)
 [![CI](https://img.shields.io/badge/CI-GitHub_Actions-2088FF)](https://github.com/features/actions)
 
-一个学习型 Demo，在 Java 生态体系下实践 **AI Agent** 和 **MCP 协议（Model Context Protocol）**——可以对话的记账应用。
+一个学习型 Demo，在 **Java + Python** 双生态下实践 **AI Agent** 和 **MCP 协议（Model Context Protocol）**——可以对话的记账应用。
 
 中文 | [English](README_EN.md)
 
@@ -15,14 +17,16 @@
 
 ## 这是什么？
 
-一个包含 4 个独立服务的全栈项目，探索如何在 JVM 上构建 AI 驱动的应用。记录日常收支，然后通过自然语言对话查询数据。AI 理解你的意图，通过 MCP 工具调用正确的 API，返回格式化结果——支持 **SSE 流式输出**和**对话记忆**。
+一个包含 6 个服务模块的全栈项目，探索如何用 **Java Spring AI** 和 **Python LangChain** 构建 AI 驱动的应用。记录日常收支，然后通过自然语言对话查询数据。AI 理解你的意图，通过 MCP 工具调用正确的 API，返回格式化结果——支持 **SSE 流式输出**和**对话记忆**。
 
 **你能从这个代码库中学到：**
 - MCP 协议如何桥接 LLM 和业务 API
-- Spring AI 1.1 如何集成 OpenAI 兼容模型（DeepSeek、通义千问等）
+- Spring AI vs LangChain 构建 AI Agent 的对比
+- FastMCP (Python) vs Spring AI MCP (Java) 的 MCP Server 实现对比
 - 如何实现从 LLM 到浏览器的逐字 SSE 流式输出
-- 如何组织多服务 Java 项目的清晰边界
-- 如何构建完整的前后端自动化测试体系
+- 通过 `config.yaml` 在 Java/Python 服务间自由切换
+- 如何组织多服务项目的清晰边界
+- 如何构建覆盖 Java + Python + Vue 的全栈自动化测试体系
 
 ---
 
@@ -32,9 +36,9 @@
 graph LR
     Browser["🌐 浏览器<br/>:5173"]
     Frontend["📱 前端<br/>Vue 3 + Element Plus<br/>+ ECharts"]
-    Agent["🤖 Agent :8081<br/>Spring AI 1.1<br/>MCP Client<br/>ChatMemory"]
+    Agent["🤖 Agent :8081/:8084<br/>Spring AI / LangChain<br/>MCP Client<br/>ChatMemory"]
     LLM["🧠 LLM<br/>DeepSeek / OpenAI<br/>兼容 API"]
-    MCPServer["🔧 MCP Server :8082<br/>5 个 Tool<br/>@McpTool 注解"]
+    MCPServer["🔧 MCP Server :8082/:8083<br/>Spring AI MCP / FastMCP<br/>5 个 Tool"]
     Backend["💾 Backend :8080<br/>Spring Boot 3.4<br/>CSV 存储"]
 
     Browser --> Frontend
@@ -45,7 +49,27 @@ graph LR
     MCPServer -->|"REST"| Backend
 ```
 
-**4 个服务，2 条数据通路：**
+**Java + Python 双栈，共享同一个 Backend：**
+
+| 层 | Java 实现 | Python 实现 | 端口 |
+|----|----------|------------|:---:|
+| **Agent** | `finance-agent` (Spring AI) | `finance-agent-py` (LangChain) | 8081 / 8084 |
+| **MCP Server** | `finance-mcp-server` (Spring AI MCP) | `finance-mcp-server-py` (FastMCP) | 8082 / 8083 |
+| **前端** | `finance-frontend` (Vue 3) | — | 5173 |
+| **后端** | `finance-backend` (Spring Boot) | — | 8080 |
+
+通过 `config.yaml` 切换 Java/Python：
+
+```yaml
+# config.yaml
+ai:
+  agent: python   # java | python
+  mcp: python     # java | python
+```
+
+前端顶栏实时显示当前 AI 提供者徽标，支持一键切换。
+
+**2 条数据通路：**
 - **CRUD 通路**：前端 → Backend（直接操作记账数据）
 - **AI 通路**：前端 → Agent → LLM → MCP Server → Backend（自然语言驱动）
 
@@ -149,7 +173,8 @@ erDiagram
         long accountId FK "关联账户"
         string type "INCOME / EXPENSE"
         decimal amount "金额"
-        string category "分类 (餐饮/交通/理财/...)"
+        string category "一级分类 (餐饮/交通/理财/...)"
+        string subCategory "二级分类 (外卖/打车/利息/...)"
         string note "备注"
         date date "日期"
         string userId "所属用户"
@@ -163,7 +188,7 @@ erDiagram
 ```
 finance-backend/data/
 ├── accounts.csv        # id,name,type,balance,userId
-└── transactions.csv    # id,accountId,type,amount,category,note,date,userId
+└── transactions.csv    # id,accountId,type,amount,category,subCategory,note,date,userId
 ```
 
 - 启动时全量加载到内存 `ConcurrentHashMap`
@@ -176,7 +201,7 @@ finance-backend/data/
 |------|------|------|
 | **`summarize_transactions`** | 按分类汇总交易金额统计 | `userId`, `filters` (JSON) |
 | **`list_transactions`** | 查询交易记录明细列表 | `userId`, `filters` (JSON) |
-| **`add_transaction`** | 添加一笔交易记录 | `userId`, `accountId`, `type`, `amount`, `category`, `note` |
+| **`add_transaction`** | 添加一笔交易记录 | `userId`, `accountId`, `type`, `amount`, `category`, `subCategory`, `note` |
 | **`list_accounts`** | 查询用户全部账户列表 | `userId` |
 | **`query_balance`** | 按 accountId 查询余额 | `userId`, `accountId` |
 
@@ -202,7 +227,7 @@ finance-backend/data/
 graph TB
     subgraph "App.vue — 响应式布局"
         direction TB
-        HEADER["AppHeader · 顶部导航 + 用户切换"]
+        HEADER["AppHeader · 顶部导航 + 用户切换 + AI 提供者徽标"]
         
         subgraph "左侧 · 记账区"
             ACC["AccountList · 账户列表"]
@@ -227,12 +252,13 @@ graph TB
 - **移动端**自动切换为 Tab 模式（📊 数据 / 💬 助手）
 - **ChatMessage** 支持 Markdown 表格、代码高亮、XSS 防护
 - **ChartRenderer** 自动检测表格数据并生成 ECharts 图表
+- **AppHeader** 显示当前 AI 提供者徽标（Java/Python），支持一键切换
 
 ---
 
-## 为什么要拆成 4 个服务？
+## 为什么要拆成 6 个模块？
 
-把 Java 代码塞进一个 Spring Boot 项目也能跑。故意拆开是为了学习：
+把代码塞进一个项目也能跑。故意拆开是为了学习：
 
 | 服务 | 职责 | 知道 AI？ | 知道业务？ |
 |------|------|:---:|:---:|
@@ -240,6 +266,8 @@ graph TB
 | **MCP Server** | 将 REST 包装为 MCP 工具 | ✗ | ✗（纯透传） |
 | **Agent** | MCP Client + LLM 编排 | ✓ | ✗ |
 | **Frontend** | UI，同时调 Backend 和 Agent | ✗ | ✗ |
+
+Agent 和 MCP Server 各有 Java/Python 两套实现，功能完整且可互换——通过 `config.yaml` 切换，非常适合对比两个技术栈的差异。
 
 这种分离让 MCP 层**可见且可感知**。真实系统中可以把 MCP Server 合并到 Backend，但这里你能清楚看到协议边界究竟在哪里。
 
@@ -252,7 +280,9 @@ graph TB
 | **前端** | Vue 3 + Element Plus + ECharts + Pinia | 3.5 / 2.14 / 6.1 / 3.0 |
 | **前端工具** | Vite + Vitest + ESLint | 8.0 / 4.1 / 10.4 |
 | **后端** | Spring Boot + SpringDoc OpenAPI | 3.4.5 / 2.8.6 |
-| **AI 框架** | Spring AI + MCP Protocol | 1.1.0 |
+| **AI 框架 (Java)** | Spring AI + MCP Protocol | 1.1.0 |
+| **AI 框架 (Python)** | LangChain + langchain-mcp-adapters + LangGraph | 0.3+ |
+| **MCP Server (Python)** | FastMCP (mcp) | 1.x |
 | **LLM** | DeepSeek / OpenAI / 通义千问 (任何兼容 API) | — |
 | **监控** | Micrometer + Prometheus | 随 Spring Boot |
 | **CI/CD** | GitHub Actions (Java 17 + Node 18) | — |
@@ -264,11 +294,13 @@ graph TB
 | 决策 | 为什么 |
 |------|--------|
 | **CSV 而非数据库** | 零环境依赖，clone + 配 Key 就跑。CSV 文件可直接用文本编辑器打开调试 |
-| **`.env` 配置** | 一份文件搞定 LLM 凭证。Spring Boot 自定义 `PropertySourceLoader` 原生加载，不用 export |
+| **`.env` 配置** | 一份文件搞定 LLM 凭证。Java 用自定义 `PropertySourceLoader`，Python 用 `python-dotenv` |
+| **`config.yaml` 切换** | 通过配置选择 Java/Python 实现，前端实时反映当前 AI 提供者 |
 | **SSE 而非 WebSocket** | 单向推送契合流式 LLM 输出，比 WebSocket 简单，能穿透 HTTP 代理 |
 | **`userId` 参数隔离** | 顶部切换用户，无真正鉴权。演示多租户数据隔离思路 |
 | **filters JSON 参数** | MCP `@McpToolParam` 无法标记 optional，将可选参数合并为 JSON 字符串避免 LLM 困惑 |
 | **System Prompt 决策规则** | 内置工具选择规则（如"汇总用 summarize_transactions"），减少 LLM 反复推理 |
+| **Agent 外部初始化** | Python Agent 在 uvicorn 启动前初始化 MCP 连接，避免 FastAPI lifespan + anyio cancel scope 冲突 |
 
 ---
 
@@ -277,6 +309,7 @@ graph TB
 ### 环境要求
 
 - **Java 17+**（推荐 [Adoptium](https://adoptium.net/)）
+- **Python 3.11+**（用于 Python 服务）
 - **Node.js 18+**
 - **LLM API Key**（DeepSeek / OpenAI / 通义千问等）
 
@@ -284,17 +317,17 @@ graph TB
 
 ```bash
 # 1. 克隆
-git clone https://github.com/your-username/personal-finance-agent.git
-cd personal-finance-agent
+git clone https://github.com/reallyhwc/test-learn-agent.git
+cd test-learn-agent
 
 # 2. 配置 LLM
 cp .env.example .env
 # 编辑 .env → 填入你的 API Key
 
-# 3. 安装前端依赖
-cd finance-frontend && npm install && cd ..
+# 3. 配置 AI 提供者（可选，默认 java）
+# 编辑 config.yaml → 设置 ai.agent 和 ai.mcp 为 java 或 python
 
-# 4. 一键启动（按顺序启动 4 个服务，含健康检查）
+# 4. 一键启动（读取 config.yaml，按需启动对应服务）
 ./start-all.sh
 
 # 5. 打开 http://localhost:5173
@@ -302,13 +335,32 @@ cd finance-frontend && npm install && cd ..
 
 > **提示：** 如果 Maven 编译报错，检查 `JAVA_HOME` 是否指向 JDK 17。
 
-### 手动启动（4 个终端，方便调试）
+### config.yaml 说明
+
+```yaml
+ai:
+  agent: python   # Agent 实现: java (Spring AI) | python (LangChain)
+  mcp: python     # MCP Server 实现: java (Spring AI MCP) | python (FastMCP)
+```
+
+- **全 Java 栈**：agent=java, mcp=java → 使用 :8081 和 :8082
+- **全 Python 栈**：agent=python, mcp=python → 使用 :8084 和 :8083
+- **混合栈**：agent=java, mcp=python 或 agent=python, mcp=java
+
+### 手动启动
 
 ```bash
-cd finance-backend && ./mvnw spring-boot:run      # :8080
-cd finance-mcp-server && ./mvnw spring-boot:run    # :8082
-cd finance-agent && ./mvnw spring-boot:run         # :8081
-cd finance-frontend && npm run dev                 # :5173
+# Java 栈
+cd finance-backend && ./mvnw spring-boot:run          # Backend :8080
+cd finance-mcp-server && ./mvnw spring-boot:run        # MCP Server :8082
+cd finance-agent && ./mvnw spring-boot:run             # Agent :8081
+
+# Python 栈
+cd finance-mcp-server-py && python3 server.py          # MCP Server :8083
+cd finance-agent-py && python3 main.py                 # Agent :8084
+
+# 前端
+cd finance-frontend && npm run dev                     # :5173
 ```
 
 ### 环境变量
@@ -327,33 +379,46 @@ cd finance-frontend && npm run dev                 # :5173
 
 ```
 .
-├── finance-backend/          Spring Boot 3.4 · REST API · CSV 存储
-│   ├── controller/           AccountController, TransactionController
-│   ├── service/              FinanceService (业务逻辑 + 聚合统计)
-│   ├── repository/           CsvDataStore (原子写入 + 内存索引)
-│   ├── exception/            GlobalExceptionHandler (统一错误响应)
-│   └── util/                 XssUtils, LogMaskUtils
+├── config.yaml                        # AI 提供者配置 (Agent/MCP 语言选择)
+├── start-all.sh                       # 一键启动 (读取 config.yaml)
 │
-├── finance-mcp-server/       Spring AI MCP · @McpTool 注解
-│   └── tool/FinanceTools     5 个工具, parseFilters 辅助方法
+├── finance-backend/                   Spring Boot 3.4 · REST API · CSV 存储
+│   ├── controller/                    AccountController, TransactionController
+│   ├── service/                       FinanceService (业务逻辑 + 聚合统计)
+│   ├── repository/                    CsvDataStore (原子写入 + 内存索引)
+│   ├── exception/                     GlobalExceptionHandler (统一错误响应)
+│   └── util/                          XssUtils, LogMaskUtils
 │
-├── finance-agent/            Spring AI 1.1 · MCP Client · ChatMemory
-│   ├── controller/           ChatController (/chat/stream SSE)
-│   ├── context/              AccountContextBuilder (30s 缓存)
-│   ├── memory/               对话记忆 (max 20 轮)
-│   └── metrics/              AgentMetrics (TTFT, Token 用量)
+├── finance-mcp-server/                Spring AI MCP · @McpTool 注解
+│   └── tool/FinanceTools              5 个工具, parseFilters 辅助方法
 │
-├── finance-frontend/         Vue 3 · Element Plus · ECharts
-│   ├── components/           9 个组件 (ChatPanel, ChartRenderer...)
-│   ├── stores/               Pinia userStore (localStorage 持久化)
-│   └── utils/                api.js, streamParser.js, markdown.js
+├── finance-mcp-server-py/             Python FastMCP · 功能完整
+│   └── server.py                      5 个 MCP 工具 (SSE 传输)
 │
-├── .github/workflows/ci.yml  GitHub Actions CI
-├── .env.example              LLM 配置模板
-└── start-all.sh              一键启动 (含健康检查)
+├── finance-agent/                     Spring AI 1.1 · MCP Client · ChatMemory
+│   ├── controller/                    ChatController (/chat/stream SSE)
+│   ├── context/                       AccountContextBuilder (30s 缓存)
+│   ├── memory/                        对话记忆 (max 20 轮)
+│   └── metrics/                       AgentMetrics (TTFT, Token 用量)
+│
+├── finance-agent-py/                  Python LangChain · ReAct Agent · 功能完整
+│   ├── agent.py                       FinanceAgent (MCP 工具 + DeepSeek LLM)
+│   ├── chat_server.py                 FastAPI SSE 流式接口
+│   ├── system_prompt.py               System Prompt + 账户上下文注入
+│   ├── memory_manager.py              JSON 文件对话记忆
+│   └── config_loader.py               .env + config.yaml 加载器
+│
+├── finance-frontend/                  Vue 3 · Element Plus · ECharts
+│   ├── components/                    9 个组件 (ChatPanel, ChartRenderer...)
+│   ├── stores/                        Pinia (userStore, aiStore)
+│   └── utils/                         api.js, streamParser.js, markdown.js
+│
+├── .github/workflows/ci.yml           GitHub Actions CI
+├── .env.example                       LLM 配置模板
+└── githooks/                          commit-msg (Conventional Commits 校验)
 ```
 
-每个模块独立 `pom.xml` / `package.json`，互相不共享代码——仅通过 HTTP 通信。
+每个模块独立构建，互相不共享代码——仅通过 HTTP / MCP 协议通信。
 
 ---
 
@@ -482,7 +547,7 @@ AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 ## 测试体系
 
 ```
-测试覆盖: 后端 ~46 用例 + 前端 70 用例 + MCP ~16 用例
+全栈测试覆盖: 后端 ~46 用例 + 前端 109 用例 + MCP ~16 用例 + Agent Java 14 用例 + Python 33 用例
 ```
 
 | 层 | 框架 | 覆盖范围 |
@@ -490,27 +555,35 @@ AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 | **后端 Controller** | Spring MockMvc | 账户/交易 CRUD、分页、日期范围过滤、聚合统计 |
 | **后端 Service** | JUnit 5 | CSV 读写、多用户隔离、余额计算 |
 | **后端异常处理** | MockMvc | GlobalExceptionHandler 统一响应格式 |
-| **MCP 工具** | MockRestServiceServer | 5 个工具正常/异常路径、入参校验、JSON 降级 |
-| **前端组件** | Vitest + Vue Test Utils | ChatPanel、ChatMessage、TransactionForm |
-| **前端 Store** | Vitest | Pinia userStore 持久化、用户切换 |
-| **前端工具** | Vitest | API 封装、SSE 流解析、Markdown 渲染、图表提取 |
+| **MCP 工具 (Java)** | MockRestServiceServer | 5 个工具正常/异常路径、入参校验、JSON 降级 |
+| **Agent (Java)** | JUnit 5 + MockMvc | 熔断器状态转换、反馈接口、记忆管理 |
+| **前端组件** | Vitest + Vue Test Utils | ChatPanel、ChatMessage、TransactionForm、AppHeader、TransactionList、AccountList |
+| **前端 Store** | Vitest | Pinia userStore 持久化 + aiStore Agent/MCP 切换 |
+| **前端工具** | Vitest | API 封装、SSE 流解析（含 CRLF 兼容）、Markdown 渲染、图表提取 |
+| **Python Agent** | pytest + pytest-asyncio | 配置加载、记忆管理、System Prompt、SSE 端点、userId 校验 |
 | **CI** | GitHub Actions | 自动化测试 + ESLint + 覆盖率 + OWASP 安全扫描 |
 
 运行测试：
 ```bash
-# 前端
+# 前端 (109 用例)
 cd finance-frontend && npx vitest run
 
 # 后端（含 MCP Server）
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
+
+# Java Agent
+cd finance-agent && ./mvnw test
+
+# Python Agent (33 用例)
+cd finance-agent-py && python -m pytest tests/ -v
 ```
 
 ---
 
 ## Claude Desktop 接入
 
-MCP Server 对外暴露标准 MCP 协议端点：
+MCP Server 对外暴露标准 MCP 协议端点，根据你的配置选择对应端口：
 
 ```json
 {
@@ -522,6 +595,9 @@ MCP Server 对外暴露标准 MCP 协议端点：
 }
 ```
 
+- Java MCP Server → `http://localhost:8082/sse`
+- Python MCP Server → `http://localhost:8083/sse`
+
 加到 `claude_desktop_config.json`，Claude Desktop 就能直接查询你的记账数据。
 
 ---
@@ -532,14 +608,28 @@ MCP Server 对外暴露标准 MCP 协议端点：
 
 **端口被占用？**
 ```bash
-lsof -ti:8080,8081,8082,5173 | xargs kill -9
+lsof -ti:8080,8081,8082,8083,8084,5173 | xargs kill -9
 ```
 
 **怎么重置数据？** `rm -rf finance-backend/data`
 
 **Swagger 文档在哪？** 启动 Backend 后访问 `http://localhost:8080/swagger-ui.html`
 
-**健康检查？** 各服务暴露 Actuator 端点：`http://localhost:{port}/actuator/health`
+**健康检查？**
+
+| 服务 | 健康检查地址 |
+|------|------------|
+| Backend | `http://localhost:8080/actuator/health` |
+| Agent (Java) | `http://localhost:8081/actuator/health` |
+| MCP Server (Java) | `http://localhost:8082/actuator/health` |
+| MCP Server (Python) | `http://localhost:8083/sse` |
+| Agent (Python) | `http://localhost:8084/actuator/health` |
+
+**Python 服务启动失败？** 检查 pip 依赖：
+```bash
+pip3 install -e finance-mcp-server-py/
+pip3 install -e finance-agent-py/
+```
 
 ---
 
