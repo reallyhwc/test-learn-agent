@@ -92,10 +92,14 @@ echo "AI 配置: Agent=$AGENT_TYPE, MCP=$MCP_TYPE"
 # 启动 MCP Server
 if [ "$MCP_TYPE" = "python" ]; then
     echo "[2/4] Starting finance-mcp-server-py (:8083)..."
+    # 确保 Python 依赖已安装
+    if [ ! -f "finance-mcp-server-py/.deps_installed" ]; then
+        pip3 install -e finance-mcp-server-py/ 2>/dev/null && touch finance-mcp-server-py/.deps_installed
+    fi
     cd finance-mcp-server-py && python3 server.py &
     MCP_PID=$!
     cd "$SCRIPT_DIR"
-    wait_for_service "MCP Server (Python)" "http://localhost:8083/actuator/health" || true
+    wait_for_service "MCP Server (Python)" "http://localhost:8083/sse" || true
 else
     echo "[2/4] Starting finance-mcp-server (:8082)..."
     cd finance-mcp-server && ./mvnw spring-boot:run -q &

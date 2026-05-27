@@ -1,7 +1,14 @@
 """System prompt 模板 — 与 Java 版 ChatController.buildSystemPrompt() 语义一致。"""
+import logging
 from datetime import date
 
+import httpx
+
 from memory_manager import MemoryManager
+
+logger = logging.getLogger(__name__)
+
+BACKEND_URL = "http://localhost:8080"
 
 CATEGORY_SYSTEM = """
 分类体系（一级→二级）：
@@ -70,3 +77,71 @@ def build_system_prompt(
 - 思考过程只用中文，禁止英文
 - 直接按决策规则行动，不要反复推敲参数
 """
+
+
+async def fetch_account_summary(user_id: str) -> str:
+    """从 Backend 拉取账户摘要注入 system prompt。
+    与 Java 版 AccountContextBuilder.formatSummary() 逻辑一致。
+    失败时返回空字符串，让 LLM 自己调工具。"""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{BACKEND_URL}/api/accounts",
+                params={"userId": user_id},
+                timeout=5.0,
+            )
+            resp.raise_for_status()
+            accounts = resp.json()
+            return _format_account_summary(accounts)
+    except Exception as e:
+        logger.warning("拉取账户上下文失败 userId=%s: %s", user_id, e)
+        return ""
+
+
+def _format_account_summary(accounts: list[dict]) -> str:
+    """格式化账户摘要，Java 版 formatSummary() 的 Python 移植。"""
+    if not accounts:
+        return "**用户上下文**: 当前用户暂无账户。\n"
+
+    sorted_accounts = sorted(
+        accounts, key=lambda a: _balance_of(a), reverse=True
+    )
+    total = sum(_balance_of(a) for a in sorted_accounts)
+
+    lines = [
+        "**用户上下文（实时数据，简单查询直接读取，不用调用工具）**",
+        f"- 账户数: {len(sorted_accounts)}",
+        f"- 总余额: ¥{total:,.2f}",
+    ]
+
+    threshold = 5
+    listed = min(len(sorted_accounts), threshold)
+    label = "账户列表" if len(sorted_accounts) <= threshold else "主要账户（按余额前 5）"
+    lines.append(f"- {label}:")
+
+    for a in sorted_accounts[:listed]:
+        lines.append(
+            f"  - ID={a.get('id')} {a.get('name', '')}"
+            f"（{a.get('type', '')}）"
+            f" 余额 ¥{_balance_of(a):,.2f}"
+        )
+
+    rest = len(sorted_accounts) - listed
+    if rest > 0:
+        rest_sum = sum(_balance_of(a) for a in sorted_accounts[listed:])
+        lines.append(
+            f"  - …另有 {rest} 个账户余额合计 ¥{rest_sum:,.2f}，详情请调用 list_accounts"
+        )
+
+    return "\n".join(lines) + "\n"
+
+
+def _balance_of(account: dict) -> float:
+    """安全提取余额。"""
+    v = account.get("balance", 0)
+    if v is None:
+        return 0.0
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0

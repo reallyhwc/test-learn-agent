@@ -116,12 +116,12 @@ async def chat_stream(request: ChatRequest):
                 yield {"data": escaped}
         except Exception as e:
             logger.error("流式错误: %s", e)
-            yield {"event": "error", "data": f"AI 服务异常：{e}"}
+            yield {"event": "error", "data": "AI 服务响应异常，请稍后重试"}
 
     return EventSourceResponse(event_generator())
 
 
-# ──────────── /api/memory (清除记忆) ────────────
+# ──────────── /api/memory (记忆管理) ────────────
 
 @app.delete("/api/memory")
 def clear_memory(user_id: str = "default"):
@@ -129,6 +129,13 @@ def clear_memory(user_id: str = "default"):
     memory = MemoryManager(uid)
     memory.clear()
     return {"success": True, "message": f"已清除用户 {uid} 的对话记忆"}
+
+
+@app.get("/api/memory/count")
+def memory_count(user_id: str = "default"):
+    uid = _sanitize_user_id(user_id)
+    memory = MemoryManager(uid)
+    return {"count": memory.count(), "maxMessages": 20}
 
 
 # ──────────── health ────────────

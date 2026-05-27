@@ -10,7 +10,7 @@ from mcp.client.sse import sse_client
 
 from config_loader import get_llm_config
 from memory_manager import MemoryManager
-from system_prompt import build_system_prompt
+from system_prompt import build_system_prompt, fetch_account_summary
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +54,8 @@ class FinanceAgent:
         """同步对话，返回完整响应文本。"""
         memory = MemoryManager(user_id)
         memory.append("user", message)
-        system_prompt = build_system_prompt(user_id, memory)
+        account_summary = await fetch_account_summary(user_id)
+        system_prompt = build_system_prompt(user_id, memory, account_summary)
 
         messages = [{"role": "system", "content": system_prompt}]
         for m in memory.get_messages():
@@ -76,7 +77,8 @@ class FinanceAgent:
         """流式对话，逐 token yield。"""
         memory = MemoryManager(user_id)
         memory.append("user", message)
-        system_prompt = build_system_prompt(user_id, memory)
+        account_summary = await fetch_account_summary(user_id)
+        system_prompt = build_system_prompt(user_id, memory, account_summary)
 
         messages = [{"role": "system", "content": system_prompt}]
         for m in memory.get_messages():
