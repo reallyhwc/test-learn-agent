@@ -8,3 +8,5 @@ finance-backend/log/
 finance-mcp-server/log/
 finance-agent/log/
 logs/
+__pycache__/
+*.pyc
