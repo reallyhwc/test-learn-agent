@@ -11,3 +11,5 @@ logs/
 __pycache__/
 *.pyc
 *.egg-info/
+.venv/
+finance-agent-py/data/
