@@ -74,6 +74,7 @@ public class ChatController {
     private final InputGuardrailAdvisor inputGuardrailAdvisor;
     private final ToolCallGuardrailAdvisor toolCallGuardrailAdvisor;
     private final OutputGuardrailAdvisor outputGuardrailAdvisor;
+    private final com.example.agent.debug.LlmInteractionLogger llmInteractionLogger;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
@@ -82,7 +83,8 @@ public class ChatController {
                           com.example.agent.context.AccountContextBuilder accountContextBuilder,
                           InputGuardrailAdvisor inputGuardrailAdvisor,
                           ToolCallGuardrailAdvisor toolCallGuardrailAdvisor,
-                          OutputGuardrailAdvisor outputGuardrailAdvisor) {
+                          OutputGuardrailAdvisor outputGuardrailAdvisor,
+                          com.example.agent.debug.LlmInteractionLogger llmInteractionLogger) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
@@ -94,6 +96,7 @@ public class ChatController {
         this.inputGuardrailAdvisor = inputGuardrailAdvisor;
         this.toolCallGuardrailAdvisor = toolCallGuardrailAdvisor;
         this.outputGuardrailAdvisor = outputGuardrailAdvisor;
+        this.llmInteractionLogger = llmInteractionLogger;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -129,7 +132,8 @@ public class ChatController {
                             .advisors(spec -> spec
                                     .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
                                     .advisors(inputGuardrailAdvisor, advisor,
-                                            toolCallGuardrailAdvisor, outputGuardrailAdvisor))
+                                            toolCallGuardrailAdvisor, outputGuardrailAdvisor,
+                                            llmInteractionLogger))
                             .call()
                             .chatResponse()
             ).get(SYNC_CHAT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -196,7 +200,8 @@ public class ChatController {
                     .advisors(spec -> spec
                             .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
-                                    toolCallGuardrailAdvisor, outputGuardrailAdvisor))
+                                    toolCallGuardrailAdvisor, outputGuardrailAdvisor,
+                                    llmInteractionLogger))
                     .stream()
                     .chatResponse()
                     .subscribe(
