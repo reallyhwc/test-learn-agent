@@ -19,11 +19,11 @@
 
 ## Phase 3: Java Agent 测试补全
 
-- [ ] 3.1 新建 `SimpleCircuitBreakerTest.java`：状态转换、并发安全
-- [ ] 3.2 新建 `FeedbackControllerTest.java`：提交反馈、参数校验
-- [ ] 3.3 新建 `MemoryControllerTest.java`：记忆 CRUD、userId 隔离
-- [ ] 3.4 运行 `./mvnw test -q` 验证全部 Java Agent 测试通过
-- [ ] 3.5 Git commit Phase 3
+- [x] 3.1 新建 `SimpleCircuitBreakerTest.java`：状态转换行为验证（8 用例）
+- [x] 3.2 新建 `FeedbackControllerTest.java`：standaloneSetup 方式（3 用例）
+- [x] 3.3 新建 `MemoryControllerTest.java`：standaloneSetup + Mockito mock（3 用例）
+- [x] 3.4 运行 `./mvnw test -q` 验证新增 Java Agent 测试全通过 ✅
+- [x] 3.5 Git commit Phase 3
 
 ## Phase 4: Python Agent 测试补全
 
