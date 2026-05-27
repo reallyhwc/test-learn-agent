@@ -2,6 +2,9 @@ package com.example.agent.controller;
 
 import com.example.agent.dto.ChatRequest;
 import com.example.agent.dto.ChatResponse;
+import com.example.agent.guardrails.InputGuardrailAdvisor;
+import com.example.agent.guardrails.OutputGuardrailAdvisor;
+import com.example.agent.guardrails.ToolCallGuardrailAdvisor;
 import com.example.agent.metrics.AgentMetrics;
 import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletResponse;
@@ -36,12 +39,18 @@ public class ChatController {
     private final ChatMemory chatMemory;
     private final AgentMetrics agentMetrics;
     private final com.example.agent.context.AccountContextBuilder accountContextBuilder;
+    private final InputGuardrailAdvisor inputGuardrailAdvisor;
+    private final ToolCallGuardrailAdvisor toolCallGuardrailAdvisor;
+    private final OutputGuardrailAdvisor outputGuardrailAdvisor;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
                           ChatMemory chatMemory,
                           AgentMetrics agentMetrics,
-                          com.example.agent.context.AccountContextBuilder accountContextBuilder) {
+                          com.example.agent.context.AccountContextBuilder accountContextBuilder,
+                          InputGuardrailAdvisor inputGuardrailAdvisor,
+                          ToolCallGuardrailAdvisor toolCallGuardrailAdvisor,
+                          OutputGuardrailAdvisor outputGuardrailAdvisor) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
@@ -50,6 +59,9 @@ public class ChatController {
         this.chatMemory = chatMemory;
         this.agentMetrics = agentMetrics;
         this.accountContextBuilder = accountContextBuilder;
+        this.inputGuardrailAdvisor = inputGuardrailAdvisor;
+        this.toolCallGuardrailAdvisor = toolCallGuardrailAdvisor;
+        this.outputGuardrailAdvisor = outputGuardrailAdvisor;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -82,7 +94,8 @@ public class ChatController {
                     chatClient.prompt()
                             .system(systemPrompt)
                             .user(message)
-                            .advisors(advisor)
+                            .advisors(inputGuardrailAdvisor, advisor,
+                                    toolCallGuardrailAdvisor, outputGuardrailAdvisor)
                             .call()
                             .chatResponse()
             ).get(SYNC_CHAT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -146,7 +159,8 @@ public class ChatController {
             var subscription = chatClient.prompt()
                     .system(systemPrompt)
                     .user(message)
-                    .advisors(advisor)
+                    .advisors(inputGuardrailAdvisor, advisor,
+                            toolCallGuardrailAdvisor, outputGuardrailAdvisor)
                     .stream()
                     .chatResponse()
                     .subscribe(
