@@ -1,7 +1,7 @@
 # AI 服务提供者配置
 ai:
-  agent: java
-  mcp: java
+  agent: python
+  mcp: python
 
 # 服务端口
 services:

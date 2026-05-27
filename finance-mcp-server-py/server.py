@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 BACKEND_URL = "http://localhost:8080"
 SAFE_USER_ID = re.compile(r"^[a-zA-Z0-9_-]{1,64}$")
 
-mcp = FastMCP("finance-mcp-server-py")
+mcp = FastMCP("finance-mcp-server-py", host="0.0.0.0", port=8083)
 
 
 def validate_user_id(user_id: str | None) -> str:
@@ -220,4 +220,4 @@ def _parse_filters(filters: str) -> dict[str, Any]:
 # ──────────── entry ────────────
 
 if __name__ == "__main__":
-    mcp.run(transport="sse", host="0.0.0.0", port=8083)
+    mcp.run(transport="sse")
