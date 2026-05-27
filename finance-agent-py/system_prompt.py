@@ -4,11 +4,31 @@ from datetime import date
 
 import httpx
 
+from config_loader import load_config
 from memory_manager import MemoryManager
 
 logger = logging.getLogger(__name__)
 
-BACKEND_URL = "http://localhost:8080"
+# 模块级 httpx 客户端，复用连接池
+_http_client: httpx.AsyncClient | None = None
+
+
+def _get_backend_url() -> str:
+    """从 config.yaml 读取 Backend 端口，构建 URL。"""
+    config = load_config()
+    port = config.get("services", {}).get("backend", {}).get("port", 8080)
+    return f"http://localhost:{port}"
+
+
+def _get_http_client() -> httpx.AsyncClient:
+    """获取模块级 httpx 客户端（惰性创建，复用连接池）。"""
+    global _http_client
+    if _http_client is None or _http_client.is_closed:
+        _http_client = httpx.AsyncClient(
+            base_url=_get_backend_url(),
+            timeout=5.0,
+        )
+    return _http_client
 
 CATEGORY_SYSTEM = """
 分类体系（一级→二级）：
@@ -84,15 +104,14 @@ async def fetch_account_summary(user_id: str) -> str:
     与 Java 版 AccountContextBuilder.formatSummary() 逻辑一致。
     失败时返回空字符串，让 LLM 自己调工具。"""
     try:
-        async with httpx.AsyncClient() as client:
-            resp = await client.get(
-                f"{BACKEND_URL}/api/accounts",
-                params={"userId": user_id},
-                timeout=5.0,
-            )
-            resp.raise_for_status()
-            accounts = resp.json()
-            return _format_account_summary(accounts)
+        client = _get_http_client()
+        resp = await client.get(
+            "/api/accounts",
+            params={"userId": user_id},
+        )
+        resp.raise_for_status()
+        accounts = resp.json()
+        return _format_account_summary(accounts)
     except Exception as e:
         logger.warning("拉取账户上下文失败 userId=%s: %s", user_id, e)
         return ""

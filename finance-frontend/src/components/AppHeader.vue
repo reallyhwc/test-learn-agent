@@ -8,6 +8,31 @@
       </div>
     </div>
     <div class="header-right">
+      <div class="combo-switch">
+        <el-select
+          :model-value="aiStore.agentType"
+          @change="onAgentChange"
+          size="small"
+          class="provider-select"
+          placeholder="Agent"
+        >
+          <el-option value="java" label="Java Agent" />
+          <el-option value="python" label="Python Agent" />
+        </el-select>
+        <span class="combo-divider">+</span>
+        <el-select
+          :model-value="aiStore.mcpType"
+          @change="onMcpChange"
+          size="small"
+          class="provider-select"
+          :loading="aiStore.mcpSwitching"
+          :disabled="aiStore.mcpSwitching"
+          placeholder="MCP"
+        >
+          <el-option value="java" label="Java MCP" />
+          <el-option value="python" label="Python MCP" />
+        </el-select>
+      </div>
       <el-select v-model="userStore.currentUser" size="small" class="user-select">
         <el-option v-for="u in userStore.users" :key="u.id" :label="u.name" :value="u.id" />
       </el-select>
@@ -20,12 +45,32 @@
 
 <script setup>
 import { computed } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useUserStore } from '../stores/userStore.js'
+import { useAiStore } from '../stores/aiStore.js'
 
 const userStore = useUserStore()
+const aiStore = useAiStore()
 const themeLabel = computed(() =>
   userStore.theme === 'light' ? '切换暗色模式' : '切换亮色模式'
 )
+
+async function onAgentChange(type) {
+  try {
+    await aiStore.switchAgent(type)
+  } catch (e) {
+    ElMessage.error('Agent 切换失败: ' + (e.message || '未知错误'))
+  }
+}
+
+async function onMcpChange(type) {
+  try {
+    await aiStore.switchMcp(type)
+    ElMessage.success(`已切换到 ${aiStore.mcpLabel}`)
+  } catch (e) {
+    ElMessage.error('MCP 切换失败: ' + (e.message || '未知错误'))
+  }
+}
 </script>
 
 <style scoped>
@@ -78,4 +123,29 @@ const themeLabel = computed(() =>
   transition: background var(--theme-transition), border-color var(--theme-transition), transform 0.2s;
 }
 .theme-toggle:hover { transform: scale(1.1); }
+
+.combo-switch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: var(--theme-bg-input);
+  border-radius: var(--theme-radius-tag);
+  border: 1px solid var(--theme-border);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
+.combo-divider {
+  font-size: 0.8rem;
+  color: var(--theme-text-muted);
+  font-weight: 600;
+}
+.provider-select {
+  width: 130px;
+}
+.provider-select :deep(.el-input__wrapper) {
+  box-shadow: none;
+  background: transparent;
+  border: none;
+  padding: 0 4px;
+}
 </style>

@@ -39,8 +39,10 @@ import TransactionForm from './components/TransactionForm.vue'
 import TransactionList from './components/TransactionList.vue'
 import ChatPanel from './components/ChatPanel.vue'
 import ChartPanel from './components/ChartPanel.vue'
+import { useAiStore } from './stores/aiStore.js'
 
 const txList = ref(null)
+const aiStore = useAiStore()
 function refreshTx() { txList.value?.fetchList() }
 
 const isMobile = ref(false)
@@ -53,6 +55,7 @@ function checkMobile() {
 onMounted(() => {
   checkMobile()
   window.addEventListener('resize', checkMobile)
+  aiStore.fetchConfig()
 })
 
 onUnmounted(() => {

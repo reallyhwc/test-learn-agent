@@ -50,10 +50,12 @@
 import { ref, watch, onUnmounted } from 'vue'
 import ChatMessage from './ChatMessage.vue'
 import { useUserStore } from '../stores/userStore.js'
+import { useAiStore } from '../stores/aiStore.js'
 import { createStreamBuffer } from '../utils/streamParser.js'
 import { apiGet } from '../utils/api.js'
 
 const userStore = useUserStore()
+const aiStore = useAiStore()
 
 const MAX_MESSAGES = 100
 
@@ -86,6 +88,67 @@ watch(
   },
 )
 
+watch(
+  () => aiStore.agentType,
+  () => {
+    if (activeController) activeController.abort()
+    messages.value = [{
+      id: newId('system'),
+      role: 'assistant',
+      text: `🔄 已切换到 **${aiStore.comboLabel}**`,
+      streaming: false,
+    }]
+    memoryCount.value = 0
+    thinking.value = false
+    refreshMemoryCount()
+  },
+)
+
+watch(
+  () => aiStore.mcpType,
+  () => {
+    if (activeController) activeController.abort()
+    memoryCount.value = 0
+
+    if (aiStore.mcpSwitching) {
+      // 由 switchMcp 触发：MCP 正在切换，Agent 将重启，阻止用户发消息
+      messages.value = [{
+        id: newId('system'),
+        role: 'assistant',
+        text: `⏳ MCP 切换中，正在重启 Agent 连接到 **${aiStore.mcpLabel}**...`,
+        streaming: false,
+      }]
+      thinking.value = true
+    } else {
+      // 由 switchAgent 的 fetchConfig 触发：仅同步显示，不阻止发消息
+      messages.value = [{
+        id: newId('system'),
+        role: 'assistant',
+        text: `🔄 已切换到 **${aiStore.comboLabel}**`,
+        streaming: false,
+      }]
+      thinking.value = false
+    }
+  },
+)
+
+watch(
+  () => aiStore.mcpSwitching,
+  (switching) => {
+    if (!switching && messages.value.length > 0) {
+      // 重启完成（mcpSwitching 从 true → false），更新提示
+      messages.value = [{
+        id: newId('system'),
+        role: 'assistant',
+        text: `✅ 已切换到 **${aiStore.comboLabel}**`,
+        streaming: false,
+      }]
+      thinking.value = false
+      refreshMemoryCount()
+    }
+  },
+)
+
 watch(() => messages.value.length, scheduleScrollToBottom)
 
 onUnmounted(() => {
@@ -100,7 +163,7 @@ function newId(role) {
 
 async function refreshMemoryCount() {
   try {
-    const data = await apiGet(`/api/memory/count?userId=${encodeURIComponent(userStore.currentUser)}`)
+    const data = await apiGet(`${aiStore.agentApiPrefix}/memory/count?userId=${encodeURIComponent(userStore.currentUser)}`)
     memoryCount.value = data.count || 0
   } catch (_) {
     // 静默失败：UI 计数不准不致命
@@ -160,7 +223,7 @@ async function send() {
   }, 3000)
 
   try {
-    const res = await fetch('/api/chat/stream', {
+    const res = await fetch(`${aiStore.agentApiPrefix}/chat/stream`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, userId: userStore.currentUser }),

@@ -2,6 +2,7 @@
 ai:
   agent: python
   mcp: python
+  mode: dual          # dual: 同时启动所有服务，支持前端动态切换 Agent + MCP 组合
 
 # 服务端口
 services:
