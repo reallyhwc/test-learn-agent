@@ -57,12 +57,19 @@ public class InputGuardrailAdvisor implements BaseAdvisor {
         this.injectionDetector = injectionDetector;
     }
 
+    /**
+     * 返回 HIGHEST_PRECEDENCE + 100，在 ChatMemory 之前执行，确保注入消息不被写入记忆。
+     */
     @Override
     public int getOrder() {
         // 在 ChatMemory Advisor (DEFAULT_CHAT_MEMORY_PRECEDENCE_ORDER = -2147482648) 之前执行
         return Ordered.HIGHEST_PRECEDENCE + 100;
     }
 
+    /**
+     * 提取用户消息，调用 {@link PromptInjectionDetector#isInjection} 检测注入。
+     * 若检测到注入则替换 System Prompt 为拒绝指令。
+     */
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         // 提取用户消息
@@ -80,6 +87,9 @@ public class InputGuardrailAdvisor implements BaseAdvisor {
         return request;
     }
 
+    /**
+     * 输入防护不需要后处理，空操作。
+     */
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         // 输入防护不需要后处理

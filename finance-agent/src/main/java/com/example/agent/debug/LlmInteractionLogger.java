@@ -72,6 +72,9 @@ public class LlmInteractionLogger implements BaseAdvisor {
         return Ordered.LOWEST_PRECEDENCE - 50;
     }
 
+    /**
+     * 记录发送给 LLM 的完整 Prompt（System + User + 历史消息），追加写入日志文件。
+     */
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         if (!enabled) {
@@ -115,6 +118,9 @@ public class LlmInteractionLogger implements BaseAdvisor {
         return request;
     }
 
+    /**
+     * 记录 LLM 的原始回复（文本 + 工具调用 + Token 用量），追加写入日志文件。
+     */
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         if (!enabled) {

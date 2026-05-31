@@ -57,18 +57,27 @@ public class OutputGuardrailAdvisor implements BaseAdvisor {
     /** 单笔金额告警阈值：超过此值记录 WARN */
     private static final BigDecimal LARGE_AMOUNT_THRESHOLD = new BigDecimal("1000000");
 
+    /**
+     * 返回 LOWEST_PRECEDENCE - 100，在 after 阶段最先执行。
+     */
     @Override
     public int getOrder() {
         // 最后执行，在所有其他 Advisor 之后
         return Ordered.LOWEST_PRECEDENCE - 100;
     }
 
+    /**
+     * 输出防护不需要前处理，空操作。
+     */
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         // 输出防护不需要前处理
         return request;
     }
 
+    /**
+     * 从 LLM 回复中提取金额，执行异常大金额告警和幻觉检测。
+     */
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         ChatResponse chatResponse = response.chatResponse();

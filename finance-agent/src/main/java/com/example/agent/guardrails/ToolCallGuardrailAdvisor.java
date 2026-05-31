@@ -76,6 +76,9 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
     /** 存储在 context 中的 userId key */
     public static final String CONTEXT_USER_ID = "guardrail.userId";
 
+    /**
+     * 返回 HIGHEST_PRECEDENCE + 300，在 InputGuardrail 之后、ChatMemory 之前执行。
+     */
     @Override
     public int getOrder() {
         // 在 InputGuardrail 之后、ChatMemory 之后执行
@@ -86,6 +89,9 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
     private static final Pattern USER_ID_IN_PROMPT = Pattern.compile(
             "工具调用中 userId 必须使用:\\s*(\\S+)");
 
+    /**
+     * 从 context 或 System Prompt 中解析 userId，写入 context 供 after() 使用。
+     */
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         // 优先从 AdvisorSpec.param() 传入的 context 中读取 userId
@@ -128,6 +134,9 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
         return null;
     }
 
+    /**
+     * 遍历 LLM 返回的 tool_call 列表，执行 userId 篡改检测、金额范围校验和写操作频率监控。
+     */
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         ChatResponse chatResponse = response.chatResponse();
