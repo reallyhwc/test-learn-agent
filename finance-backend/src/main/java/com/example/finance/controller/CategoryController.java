@@ -9,6 +9,12 @@ import org.springframework.web.bind.annotation.RestController;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 【分类查询 REST 控制器】
+ *
+ * <p>返回树形分类结构：每个一级分类下挂 {@code children} 二级分类数组。
+ * 分类数据在 Backend 启动时从 {@code data/categories.csv} 加载，运行期不变。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/categories")

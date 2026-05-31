@@ -14,6 +14,17 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
 
+/**
+ * 【交易流水 REST 控制器】
+ *
+ * <p>提供交易记录的查询、汇总和创建功能。支持多维度筛选（账户、日期范围、分类、交易类型）。
+ *
+ * <ul>
+ *   <li>{@code GET /api/transactions} — 分页查询交易明细</li>
+ *   <li>{@code GET /api/transactions/summary} — 按分类维度汇总交易金额</li>
+ *   <li>{@code POST /api/transactions} — 创建交易记录（用户可控文本字段 XSS 清洗）</li>
+ * </ul>
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api/transactions")
@@ -25,6 +36,20 @@ public class TransactionController {
         this.financeService = financeService;
     }
 
+    /**
+     * 分页查询交易明细，支持按账户、日期、分类、交易类型等多条件组合筛选。
+     *
+     * @param userId 用户标识
+     * @param accountId 账户 ID 筛选（可选）
+     * @param startDate 起始日期（可选）
+     * @param endDate 结束日期（可选）
+     * @param category 一级分类筛选（可选）
+     * @param subCategory 二级分类筛选（可选）
+     * @param type 交易类型（INCOME/EXPENSE，可选）
+     * @param page 页码（默认 1）
+     * @param pageSize 每页条数（默认 20，上限 1000）
+     * @return 分页结果（含 items、total、page、totalPages）
+     */
     @GetMapping
     public PageResult<Transaction> listTransactions(
             @RequestParam(required = false, defaultValue = "default") String userId,
@@ -44,6 +69,16 @@ public class TransactionController {
         return financeService.listTransactionsPaginated(userId, accountId, startDate, endDate, category, subCategory, type, page, pageSize);
     }
 
+    /**
+     * 按分类维度汇总交易金额，支持按 {@code category} 或 {@code subCategory} 分组。
+     *
+     * @param userId 用户标识
+     * @param type 交易类型筛选（可选）
+     * @param startDate 起始日期（可选）
+     * @param endDate 结束日期（可选）
+     * @param groupBy 分组维度（"category" 或 "subCategory"，默认 "category"）
+     * @return 汇总结果列表，每项包含分类名和金额
+     */
     @GetMapping("/summary")
     public List<Map<String, Object>> summarizeTransactions(
             @RequestParam(required = false, defaultValue = "default") String userId,
@@ -55,6 +90,12 @@ public class TransactionController {
         return financeService.summarizeTransactions(userId, type, startDate, endDate, groupBy);
     }
 
+    /**
+     * 创建交易记录。对用户可控文本字段（note、category、subCategory）进行 XSS 清洗后写入。
+     *
+     * @param transaction 交易实体（含 amount、type、category 等）
+     * @return 创建成功的交易记录（含自动生成的 id）
+     */
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Transaction createTransaction(@RequestBody Transaction transaction) {
