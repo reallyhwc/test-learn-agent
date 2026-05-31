@@ -14,13 +14,26 @@ import java.time.LocalDateTime;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
+/**
+ * 【用户反馈收集控制器】
+ *
+ * <p>接收前端用户对 AI 回复的评分（1-5 星），以 JSONL 格式追加写入 {@code data/feedback.jsonl}。
+ * 使用 Jackson ObjectMapper 安全序列化，防止 JSON 注入。
+ */
 @Slf4j
 @RestController
 @RequestMapping("/api")
 public class FeedbackController {
 
+    /** JSON 序列化器，用于安全写入反馈记录 */
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    /**
+     * 提交用户反馈评分。
+     *
+     * @param request 反馈请求（含 userId、messageId、rating）
+     * @return 200 + {"status": "ok"}，写入失败时返回 500
+     */
     @PostMapping("/feedback")
     public ResponseEntity<Map<String, String>> submitFeedback(@RequestBody FeedbackRequest request) {
         log.info("Feedback received: userId={} messageId={} rating={}",

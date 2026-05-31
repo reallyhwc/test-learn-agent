@@ -108,6 +108,22 @@ public class ChatController {
     /** 同步 chat 接口超时（秒） */
     private static final long SYNC_CHAT_TIMEOUT_SECONDS = 60;
 
+    /**
+     * 同步对话接口（非流式）。
+     *
+     * <h3>核心流程</h3>
+     * <ol>
+     *   <li>userId 清洗（防路径穿越）+ 消息校验截断（max 2000 字符）</li>
+     *   <li>构建 System Prompt（含账户摘要 + 对话记忆状态 + 决策规则）</li>
+     *   <li>构建 MessageChatMemoryAdvisor（用 ChatMemory Bean，conversationId = userId）</li>
+     *   <li>组装 Advisor 链并调用 ChatClient，60s 超时保护</li>
+     *   <li>记录 Token 用量并写入 token-usage.jsonl</li>
+     * </ol>
+     *
+     * @param request 聊天请求（含 userId 和 message）
+     * @return ChatResponse（含 LLM 回复文本）
+     * @throws RuntimeException 如 LLM 超时或执行异常
+     */
     @PostMapping("/chat")
     public ChatResponse chat(@RequestBody ChatRequest request) {
         String userId = sanitizeUserId(request.getUserId());
@@ -164,6 +180,23 @@ public class ChatController {
         }
     }
 
+    /**
+     * 流式对话接口（SSE），前端实际使用的核心接口。
+     *
+     * <h3>核心流程</h3>
+     * <ol>
+     *   <li>userId 清洗 + 消息校验截断</li>
+     *   <li>构建 System Prompt + MessageChatMemoryAdvisor + Advisor 链</li>
+     *   <li>通过 Reactor 反应式订阅 LLM 流式输出，逐 token 以 SSE 格式推送</li>
+     *   <li>记录 TTFT（首个 token 到达时间）+ 零 Token 检测（配置错误预警）</li>
+     *   <li>流结束后记录 Token 用量（TPS）+ 写入 token-usage.jsonl</li>
+     *   <li>通过 {@link java.util.concurrent.CompletableFuture} 包装流式操作，115s 超时保护</li>
+     * </ol>
+     *
+     * @param request 聊天请求（含 userId 和 message）
+     * @param response HTTP 响应（用于设置 SSE headers）
+     * @return SSE StreamingResponseBody
+     */
     @PostMapping(value = "/chat/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public ResponseEntity<StreamingResponseBody> chatStream(@RequestBody ChatRequest request,
                                                              HttpServletResponse response) {
