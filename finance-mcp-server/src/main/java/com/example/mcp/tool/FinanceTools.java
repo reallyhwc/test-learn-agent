@@ -54,8 +54,11 @@ import java.util.regex.Pattern;
 @Component
 public class FinanceTools {
 
+    /** 连接 Backend REST API 的客户端 */
     private final RestClient restClient;
+    /** JSON 解析器，用于 filters 参数和响应转换 */
     private final ObjectMapper objectMapper;
+    /** Micrometer 指标注册中心，用于 mcp.tool.* 指标 */
     private final MeterRegistry registry;
 
     public FinanceTools(RestClient restClient, ObjectMapper objectMapper, MeterRegistry registry) {
@@ -64,6 +67,15 @@ public class FinanceTools {
         this.registry = registry;
     }
 
+    /**
+     * 查询单个账户余额。
+     *
+     * <p>实现要点：直接调用 Backend GET /api/accounts/{id}/balance，异常全捕获返回友好字符串。
+     *
+     * @param userId 用户标识
+     * @param accountId 账户 ID
+     * @return 余额（BigDecimal）或错误提示字符串
+     */
     @McpTool(name = "query_balance",
             description = "按 accountId 查询单个账户余额。注意：list_accounts 返回的对象已含 balance 字段，"
                     + "查询余额时优先用 list_accounts 一次拿全，不要重复调用此工具。")
@@ -89,8 +101,20 @@ public class FinanceTools {
 
     /** 默认返回条数，平衡信息量与 token 消耗 */
     private static final int DEFAULT_PAGE_SIZE = 50;
+    /** 分页上限，防止 token 消耗过大 */
     private static final int MAX_PAGE_SIZE = 200;
 
+    /**
+     * 查询交易明细列表。
+     *
+     * <p>实现要点：支持 LLM 通过 filters JSON 传入多维度筛选条件，URI 使用
+     * {@link UriComponentsBuilder} 构建防止中文二次编码。返回包含 summary 的结构，
+     * 让 LLM 了解数据全貌而不必拉取全量。
+     *
+     * @param userId 用户标识
+     * @param filters 过滤条件 JSON（可选字段：startDate, endDate, category, subCategory, type, accountId, limit）
+     * @return 包含 items、total、showing、summary 的 Map，或错误提示字符串
+     */
     @McpTool(name = "list_transactions",
             description = "查询交易记录明细列表，默认返回最近50条。仅 userId 必填，其余过滤条件通过 filters JSON 传入。"
                     + "如需更多可在 filters 中指定 limit（最大200）。"
@@ -178,6 +202,15 @@ public class FinanceTools {
         }
     }
 
+    /**
+     * 按分类汇总交易金额。
+     *
+     * <p>实现要点：支持按 category 或 subCategory 分组，groupBy 参数通过 filters JSON 传入。
+     *
+     * @param userId 用户标识
+     * @param filters 过滤条件 JSON（可选字段：type, startDate, endDate, groupBy）
+     * @return 汇总结果列表（每项含分类名和金额），或错误提示字符串
+     */
     @McpTool(name = "summarize_transactions",
             description = "按分类汇总交易金额统计。返回每个分类的总金额和笔数及合计。"
                     + "适用于'赚了多少''花了多少''收支汇总'类问题。"
@@ -223,6 +256,10 @@ public class FinanceTools {
         }
     }
 
+    /**
+     * 解析 LLM 传入的 filters JSON 字符串为 Map。
+     * 解析失败时静默降级为空 Map（不中断工具调用）。
+     */
     @SuppressWarnings("unchecked")
     private Map<String, Object> parseFilters(String filters) {
         if (filters == null || filters.isBlank() || "{}".equals(filters.trim())) {
@@ -236,6 +273,21 @@ public class FinanceTools {
         }
     }
 
+    /**
+     * 添加一笔交易记录。
+     *
+     * <p>实现要点：参数校验不抛异常（返回友好字符串），防止中断 MCP 协议。
+     * 校验通过后 POST JSON 到 Backend，包含 date 自动填当天。
+     *
+     * @param userId 用户标识
+     * @param accountId 账户 ID
+     * @param type 交易类型（INCOME/EXPENSE）
+     * @param amount 金额
+     * @param category 一级分类
+     * @param subCategory 二级分类
+     * @param note 备注
+     * @return 创建成功的交易信息 Map，或错误提示字符串
+     */
     @McpTool(name = "add_transaction",
             description = "添加一笔交易记录。category 和 subCategory 必须同时提供。"
                     + "支出一级分类: 餐饮(外卖/食堂/聚餐/日常餐饮)、交通(公交/打车/加油/日常出行)、"
@@ -300,6 +352,15 @@ public class FinanceTools {
         }
     }
 
+    /**
+     * 查询用户全部账户列表。
+     *
+     * <p>实现要点：返回的 AccountResponse 已包含实时 balance 字段，
+     * Agent 侧拿到后可直接使用，无需再调 query_balance。
+     *
+     * @param userId 用户标识
+     * @return 账户列表（AccountResponse[]），或错误提示字符串
+     */
     @McpTool(name = "list_accounts",
             description = "查询用户的全部账户列表。返回字段：id、name、type、balance（实时余额）、userId。"
                     + "balance 已包含在返回中，无需再调用 query_balance。")
@@ -345,6 +406,9 @@ public class FinanceTools {
         return userId;
     }
 
+    /**
+     * 记录工具调用成功指标：增加 mcp.tool.calls.total（tag: success），记录耗时。
+     */
     private void recordSuccess(String toolName, long startNs) {
         Counter.builder("mcp.tool.calls.total")
                 .tag("tool_name", toolName)
@@ -357,6 +421,10 @@ public class FinanceTools {
                 .record(System.nanoTime() - startNs, TimeUnit.NANOSECONDS);
     }
 
+    /**
+     * 记录工具调用失败指标：增加 mcp.tool.calls.total（tag: error），
+     * 按异常类型分类记录 mcp.tool.calls.errors。
+     */
     private void recordError(String toolName, Exception e) {
         Counter.builder("mcp.tool.calls.total")
                 .tag("tool_name", toolName)

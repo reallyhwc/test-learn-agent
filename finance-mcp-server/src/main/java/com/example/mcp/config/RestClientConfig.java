@@ -17,9 +17,23 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class RestClientConfig {
 
+    /**
+     * Backend 服务的基础 URL。
+     * 从配置项 {@code finance.backend.url} 注入（application.yml 中默认 http://localhost:8080）。
+     */
     @Value("${finance.backend.url}")
     private String backendUrl;
 
+    /**
+     * 创建带连接池和超时配置的 {@link RestClient.Builder}。
+     *
+     * <p>配置说明：
+     * <ul>
+     *   <li>连接池 maxTotal=20, maxPerRoute=10 — MCP 工具调用是低频同步请求，不需要大连接池</li>
+     *   <li>连接超时 3s — Backend 是本地服务，建立连接很快</li>
+     *   <li>响应超时 10s — 最慢的 CSV 全表扫描场景下也在 10s 内完成</li>
+     * </ul>
+     */
     @Bean
     public RestClient.Builder restClientBuilder() {
         var connectionManager = new PoolingHttpClientConnectionManager();
@@ -41,6 +55,9 @@ public class RestClientConfig {
                 .requestFactory(requestFactory);
     }
 
+    /**
+     * 构建最终的 {@link RestClient} Bean，供 {@link com.example.mcp.tool.FinanceTools} 注入使用。
+     */
     @Bean
     public RestClient financeRestClient(RestClient.Builder builder) {
         return builder.build();
