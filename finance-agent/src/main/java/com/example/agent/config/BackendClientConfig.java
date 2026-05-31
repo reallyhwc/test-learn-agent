@@ -17,6 +17,19 @@ import org.springframework.web.client.RestClient;
 @Configuration
 public class BackendClientConfig {
 
+    /**
+     * 创建连接 Backend 的 {@link RestClient} Bean。
+     *
+     * <p>配置说明：
+     * <ul>
+     *   <li>连接池 maxTotal=20, maxPerRoute=10 — Agent 到 Backend 是低频查询（账户摘要），不需要大连接池</li>
+     *   <li>连接超时 3s — 本地服务建立连接很快</li>
+     *   <li>响应超时 10s — Backend CSV 查询在 10s 内完成</li>
+     * </ul>
+     *
+     * @param backendUrl Backend 服务地址（从配置项 {@code finance.backend.url} 注入）
+     * @return 配置好的 RestClient 实例
+     */
     @Bean
     public RestClient backendRestClient(
             @Value("${finance.backend.url:http://localhost:8080}") String backendUrl) {

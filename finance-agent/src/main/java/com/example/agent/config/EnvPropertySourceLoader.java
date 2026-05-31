@@ -13,10 +13,13 @@ import java.util.Map;
 import java.util.Properties;
 
 /**
- * Makes Spring Boot recognize .env files (same key=value format as .properties).
+ * 【.env 文件属性源加载器】
  *
- * Registered via META-INF/spring/org.springframework.boot.env.PropertySourceLoader.
- * After this, spring.config.import can reference .env files directly.
+ * <p>让 Spring Boot 识别 {@code .env} 文件（格式同 {@code .properties}）。
+ * 通过 {@code META-INF/spring/org.springframework.boot.env.PropertySourceLoader} 注册，
+ * 之后 {@code spring.config.import} 可以直接引用 .env 文件。
+ *
+ * @see AgentApplication Agent 启动入口，加载 .env 到 System Properties
  */
 public class EnvPropertySourceLoader implements PropertySourceLoader {
 
