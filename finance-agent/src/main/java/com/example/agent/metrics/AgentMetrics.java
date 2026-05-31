@@ -9,12 +9,33 @@ import org.springframework.stereotype.Component;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+/**
+ * 【Agent 自定义 Micrometer 指标】
+ *
+ * <p>涵盖 Agent 核心监控维度：
+ * <ul>
+ *   <li>{@code agent.chat.requests} — 请求计数（按 type: normal/stream 分 tag）</li>
+ *   <li>{@code agent.chat.duration} — 请求总耗时（Timer）</li>
+ *   <li>{@code agent.chat.ttft} — 首个 token 到达时间（TTFT）</li>
+ *   <li>{@code agent.llm.tokens.input/output} — Token 用量（按 model 分 tag）</li>
+ *   <li>{@code agent.llm.tokens.speed} — 流式输出 TPS（Gauge）</li>
+ *   <li>{@code agent.llm.errors} — LLM 错误计数（按 error_type 分 tag）</li>
+ *   <li>{@code agent.memory.*} — 对话记忆聚合指标（总量，不按 userId 拆分）</li>
+ * </ul>
+ *
+ * <h3>高基数注意事项</h3>
+ * 为避免 Prometheus 指标爆炸，userId 不作为标签使用，
+ * 记忆指标使用聚合 gauge（总和/活跃用户数）替代按用户拆分。
+ */
 @Component
 public class AgentMetrics {
 
     private final MeterRegistry registry;
+    /** token 速率 gauge 的最新值（tokens/s） */
     private final AtomicLong tokenSpeed = new AtomicLong(0);
+    /** userId → 消息数（仅用于聚合 gauge 计算） */
     private final ConcurrentHashMap<String, AtomicLong> memoryMessages = new ConcurrentHashMap<>();
+    /** userId → 文件大小（仅用于聚合 gauge 计算） */
     private final ConcurrentHashMap<String, AtomicLong> memorySizes = new ConcurrentHashMap<>();
 
     public AgentMetrics(MeterRegistry registry) {
@@ -23,6 +44,9 @@ public class AgentMetrics {
                 .register(registry);
     }
 
+    /**
+     * 记录一次聊天请求。userId 不作为标签，避免高基数导致 Prometheus 指标爆炸。
+     */
     public void recordChatRequest(String userId, String type) {
         // 不再将 userId 作为标签，避免高基数导致 Prometheus 指标爆炸
         Counter.builder("agent.chat.requests")
@@ -31,20 +55,32 @@ public class AgentMetrics {
                 .increment();
     }
 
+    /**
+     * 启动一个高精度计时器（纳秒），返回的 Sample 用于后续 recordDuration 或 recordTtft。
+     */
     public Timer.Sample startTimer() {
         return Timer.start(registry);
     }
 
+    /**
+     * 记录首个 token 到达时间（TTFT）。
+     */
     public void recordTtft(String userId, Timer.Sample sample) {
         sample.stop(Timer.builder("agent.chat.ttft")
                 .register(registry));
     }
 
+    /**
+     * 记录一次请求的总耗时。
+     */
     public void recordDuration(String userId, Timer.Sample sample) {
         sample.stop(Timer.builder("agent.chat.duration")
                 .register(registry));
     }
 
+    /**
+     * 记录一次请求的 Token 用量（输入 + 输出），按模型名分 tag。
+     */
     public void recordTokens(String model, long inputTokens, long outputTokens) {
         Counter.builder("agent.llm.tokens.input")
                 .tag("model", model)
@@ -56,10 +92,16 @@ public class AgentMetrics {
                 .increment(outputTokens);
     }
 
+    /**
+     * 记录流式输出的 token 速率（tokens/s），由 Gauge 自动读取最新值。
+     */
     public void recordTokenSpeed(long tokensPerSecond) {
         tokenSpeed.set(tokensPerSecond);
     }
 
+    /**
+     * 记录 LLM 调用错误，按错误类型分类。
+     */
     public void recordLlmError(String errorType) {
         Counter.builder("agent.llm.errors")
                 .tag("error_type", errorType)
@@ -67,6 +109,9 @@ public class AgentMetrics {
                 .increment();
     }
 
+    /**
+     * 记录 LLM 调用重试次数。
+     */
     public void recordLlmRetry() {
         Counter.builder("agent.llm.retries")
                 .register(registry)

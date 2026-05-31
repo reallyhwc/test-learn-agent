@@ -19,8 +19,28 @@ import java.util.List;
 import java.util.Map;
 import java.util.regex.Pattern;
 
+/**
+ * 【对话记忆的 JSON 文件持久化实现】
+ *
+ * <p>实现了 Spring AI 的 {@link ChatMemory} 接口，通过
+ * {@link org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor}
+ * 在 Advisor 链的 before/after 阶段自动读写对话历史。
+ *
+ * <h3>核心设计</h3>
+ * <ul>
+ *   <li><b>持久化</b>：每条对话存储为 {@code data/memory/{conversationId}.json}，conversationId 即 userId</li>
+ *   <li><b>条数截断</b>：最多保留 20 条消息（可按需配置）</li>
+ *   <li><b>Token 估算截断</b>：总 token 超 4000 时继续移除最早消息</li>
+ *   <li><b>LRU 内存缓存</b>：最多 200 个用户会话，超限淘汰最久未访问的</li>
+ *   <li><b>异步持久化</b>：通过 CompletableFuture 异步写文件，不阻塞请求线程</li>
+ *   <li><b>安全校验</b>：conversationId 仅允许 {@code [a-zA-Z0-9_-]{1,64}}，防路径穿越</li>
+ * </ul>
+ *
+ * @see com.example.agent.config.ChatMemoryConfig Bean 注册配置
+ */
 @Slf4j
 public class JsonFileChatMemory implements ChatMemory {
+    /** 默认每会话最大消息数 */
     private static final int DEFAULT_MAX_MESSAGES = 20;
     /** 内存中最多缓存的用户会话数，超过后按 LRU 淘汰最久未访问的会话 */
     private static final int MAX_CACHED_CONVERSATIONS = 200;
@@ -44,10 +64,18 @@ public class JsonFileChatMemory implements ChatMemory {
     private final int maxMessages;
     private final AgentMetrics agentMetrics;
 
+    /**
+     * @param dataDir 记忆文件存储目录（默认 {@code data/memory}）
+     */
     public JsonFileChatMemory(String dataDir) {
         this(dataDir, DEFAULT_MAX_MESSAGES, null);
     }
 
+    /**
+     * @param dataDir 存储目录
+     * @param maxMessages 每会话最大消息数（默认 20）
+     * @param agentMetrics 指标采集对象（可为 null，跳过指标更新）
+     */
     public JsonFileChatMemory(String dataDir, int maxMessages, AgentMetrics agentMetrics) {
         this.dataDir = dataDir;
         this.maxMessages = maxMessages;
@@ -56,6 +84,9 @@ public class JsonFileChatMemory implements ChatMemory {
         new File(dataDir).mkdirs();
     }
 
+    /**
+     * 追加消息到指定会话。add + trim + persist 在同一个 synchronized 块内完成，防止并发竞态。
+     */
     @Override
     public void add(String conversationId, List<Message> messages) {
         // 整个 add + trim + persist 在同一个 synchronized 块内完成，防止并发竞态丢消息
@@ -66,6 +97,9 @@ public class JsonFileChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 读取指定会话的全部历史消息。优先从 LRU 缓存读取，未命中时从 JSON 文件加载。
+     */
     @Override
     public List<Message> get(String conversationId) {
         synchronized (store) {
@@ -80,6 +114,9 @@ public class JsonFileChatMemory implements ChatMemory {
         }
     }
 
+    /**
+     * 清除指定会话的全部记忆（缓存 + 磁盘文件）。
+     */
     @Override
     public void clear(String conversationId) {
         synchronized (store) {
