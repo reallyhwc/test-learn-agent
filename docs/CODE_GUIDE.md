@@ -16,7 +16,7 @@
 |-------------|-------------------|---------------|
 | **Spring MVC Controller** | Agent 对话入口 | `ChatController` |
 | **Feign Client** | 调用外部服务的客户端 | `ChatClient`（调 LLM）+ `RestClient`（调 Backend） |
-| **HandlerInterceptor / Filter Chain** | Advisor 链（请求前后处理） | `InputGuardrailAdvisor` → `ChatMemoryAdvisor` → `ToolCallGuardrailAdvisor` → `OutputGuardrailAdvisor` |
+| **HandlerInterceptor / Filter Chain** | Advisor 链（请求前后处理） | `InputGuardrailAdvisor` → `ToolCallGuardrailAdvisor` → `MessageChatMemoryAdvisor` → `OutputGuardrailAdvisor` → `LlmInteractionLogger` |
 | **RPC 接口定义** | MCP 工具定义 | `@McpTool` 注解方法（类似 `@FeignClient`） |
 | **服务注册发现** | MCP 工具自动发现 | Agent 通过 SSE 连接 MCP Server，自动获取工具列表 |
 | **数据库连接池** | LLM API 连接 | Spring AI 自动配置的 OpenAI Client |
@@ -92,11 +92,11 @@ graph TB
 
     BOOT --> AC1["Auto-config: OpenAI<br/>→ ChatClient.Builder Bean<br/>读取 LLM_API_KEY / LLM_BASE_URL / LLM_MODEL"]
     BOOT --> AC2["Auto-config: MCP Client<br/>→ SSE 连接 MCP Server(:8082)<br/>→ ToolCallbackProvider Bean<br/>自动发现 5 个 MCP 工具"]
-    BOOT --> B1["ChatMemoryConfig<br/>→ ChatMemory Bean<br/>JsonFileChatMemory(max=20)"]
+    BOOT --> B1["@ComponentScan 发现<br/>ChatMemoryConfig (@Configuration)<br/>→ ChatMemory Bean = JsonFileChatMemory(max=20)"]
     BOOT --> B2["BackendClientConfig<br/>→ RestClient Bean<br/>连接池 20/10, 超时 3s/10s"]
     BOOT --> B3["@Component 扫描<br/>AgentMetrics / AccountContextBuilder<br/>InputGuardrailAdvisor / ToolCallGuardrailAdvisor / OutputGuardrailAdvisor"]
 
-    AC1 --> CC["ChatController 构造函数"]
+    AC1 --> CC["ChatController 构造函数<br/>注入 chatMemory + 构建 MessageChatMemoryAdvisor"]
     AC2 --> CC
     B1 --> CC
     B2 --> CC
@@ -159,21 +159,58 @@ spring:
 
 #### ChatMemory — 对话记忆
 
-> 文件：[ChatMemoryConfig.java](../finance-agent/src/main/java/com/example/agent/config/ChatMemoryConfig.java)
+> 配置文件：[ChatMemoryConfig.java](../finance-agent/src/main/java/com/example/agent/config/ChatMemoryConfig.java)
+> 实现类：[JsonFileChatMemory.java](../finance-agent/src/main/java/com/example/agent/memory/JsonFileChatMemory.java)
+
+##### 工作原理（完整链路）
+
+很多读者问：`ChatMemoryConfig` 被谁引用？它怎么"跑起来"的？答案涉及 Spring Boot 默认机制 + Spring AI 内置 Advisor 的协作：
+
+```
+① @SpringBootApplication（AgentApplication）
+     ↓ 默认包扫描 com.example.agent 及其子包
+② ChatMemoryConfig (@Configuration)
+     ↓ 无需 @Import，Spring Boot 自动发现
+③ @Bean chatMemory() → new JsonFileChatMemory(...)
+     ↓ 注册为 Spring Bean（类型: ChatMemory）
+④ ChatController 构造函数注入
+     ↓ MessageChatMemoryAdvisor.builder(chatMemory).conversationId(userId).build()
+⑤ Spring AI 内置的 MessageChatMemoryAdvisor
+     ↓ 在 Advisor 链中自动执行：
+     ├── before(): chatMemory.get(userId) → 读取历史消息，注入到 LLM Prompt 末尾
+     └── after():  chatMemory.add(userId, messages) → 保存本轮对话到记忆
+```
+
+**关键理解**：
+- `ChatMemoryConfig` **不需要被显式 import** — `AgentApplication` 上的 `@SpringBootApplication` 会扫描 `com.example.agent` 包，自动发现 `config` 子包下的 `@Configuration` 类
+- `ChatController` **不直接调用** `chatMemory.add()` / `chatMemory.get()` — 它只是用 `chatMemory` Bean 构建了一个 `MessageChatMemoryAdvisor`，实际的读写由这个 Advisor 在 before/after 阶段自动完成
+- `MessageChatMemoryAdvisor` 是 **Spring AI 内置类**（`org.springframework.ai.chat.client.advisor` 包），不是本项目自定义的 — 它通过 `conversationId`（即 userId）区分不同用户的记忆
+
+> 看到这里你可以跳到 [第六章：Advisor 链](#第六章advisor-链--ai-版的-filter-chain重点) 了解 Advisor 的 before/after 执行机制，再回来看下面的实现细节。
+
+##### ChatMemoryConfig 配置
 
 ```java
-@Bean
-public ChatMemory chatMemory(AgentMetrics agentMetrics) {
-    return new JsonFileChatMemory(memoryDir, 20, agentMetrics);  // max 20 轮
+@Configuration
+public class ChatMemoryConfig {
+    @Value("${finance.memory-dir:data/memory}")
+    private String memoryDir;
+
+    @Bean
+    public ChatMemory chatMemory(AgentMetrics agentMetrics) {
+        return new JsonFileChatMemory(memoryDir, 20, agentMetrics);
+    }
 }
 ```
 
-**实现细节**（[JsonFileChatMemory.java](../finance-agent/src/main/java/com/example/agent/memory/JsonFileChatMemory.java)）：
+##### JsonFileChatMemory 实现细节
+
 - **存储**：JSON 文件持久化到 `data/memory/{userId}.json`
 - **条数截断**：超过 20 条时移除最早的消息
 - **Token 估算截断**：总 token 超过 4000 时继续移除
-- **LRU 缓存**：`LinkedHashMap`，最多 200 个用户会话
+- **LRU 缓存**：`LinkedHashMap`（access-order），最多 200 个用户会话
 - **异步持久化**：`CompletableFuture.runAsync()` 避免阻塞请求线程
+- **安全校验**：conversationId 正则 `[a-zA-Z0-9_-]{1,64}`，防止路径穿越攻击
 
 #### AccountContextBuilder — 账户上下文注入
 
@@ -219,6 +256,32 @@ public ChatController(
 **关键理解**：`chatClientBuilder.defaultToolCallbacks(mcpTools).build()` 这一行等价于——
 "创建一个 LLM 客户端，告诉它有这些工具可以调用"。之后 LLM 收到用户消息时，会**自主决定**是否调用某个工具。
 
+**记忆功能如何接入**：构造函数注入了 `ChatMemory chatMemory`，但它并**不在构造函数中使用**。实际的用法在 `chat()` 和 `chatStream()` 方法中，每次收到请求时动态构建 `MessageChatMemoryAdvisor`：
+
+```java
+// 在 chat() / chatStream() 方法内部，每收到一个请求时：
+var advisor = MessageChatMemoryAdvisor.builder(chatMemory)  // ① 用 chatMemory Bean 构建
+        .conversationId(userId)                              // ② 用 userId 隔离不同用户
+        .build();                                            // ③ 创建 Advisor 实例
+
+// 然后注册到 Advisor 链中：
+chatClient.prompt()
+    .system(systemPrompt)
+    .user(message)
+    .advisors(spec -> spec
+        .advisors(inputGuardrailAdvisor, advisor, ...))      // ④ advisor 加入链
+    .call();
+```
+
+`MessageChatMemoryAdvisor` 是 **Spring AI 内置类**（`org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor`），不是本项目定义的。它在 Advisor 链中自动执行：
+
+| 阶段 | 操作 | 调用的方法 |
+|------|------|-----------|
+| `before()` | 从记忆加载历史消息，追加到 Prompt 末尾 | `chatMemory.get(userId)` → `List<Message>` |
+| `after()` | 将本轮用户消息和 LLM 回复保存到记忆 | `chatMemory.add(userId, messages)` → 异步写文件 |
+
+> 这就是为什么你找不到 "谁在调用 `chatMemory.add()`" — 是 Spring AI 内置的 `MessageChatMemoryAdvisor` 在调用，不是我们的代码。详细原理见 [3.3 节](#chatmemory-对话记忆)。
+
 ### 4.2 同步接口 `/api/chat`
 
 > 方法：[`chat()`](../finance-agent/src/main/java/com/example/agent/controller/ChatController.java#L75-L128)
@@ -232,7 +295,9 @@ public ChatController(
         .user(message)                ← 用户的消息
         .advisors(spec -> spec
             .param(CONTEXT_USER_ID, userId)     ← 将 userId 写入 context
-            .advisors(inputGuardrail, chatMemory, toolCallGuardrail, outputGuardrail))
+            .advisors(inputGuardrailAdvisor, advisor,
+                    toolCallGuardrailAdvisor, outputGuardrailAdvisor,
+                    llmInteractionLogger))
         .call()                       ← 同步调用 LLM（LLM 可能在内部调用 MCP 工具）
         .chatResponse()
      → 提取回复文本 + Token 统计
@@ -429,26 +494,32 @@ if (AdvisorUtils.onFinishReason().test(response)) {
 }
 ```
 
-### 6.3 本项目的 Advisor 链（4 个 Advisor）
+### 6.3 本项目的 Advisor 链（5 个 Advisor）
 
 | 序号 | Advisor | order 值 | before() | after() |
 |:---:|---------|---------|----------|---------|
 | ① | [InputGuardrailAdvisor](../finance-agent/src/main/java/com/example/agent/guardrails/InputGuardrailAdvisor.java) | `HIGHEST + 100` | Prompt Injection 检测 | 空操作 |
 | ② | [ToolCallGuardrailAdvisor](../finance-agent/src/main/java/com/example/agent/guardrails/ToolCallGuardrailAdvisor.java) | `HIGHEST + 300` | 解析 userId 写入 context | 审计工具调用 |
-| ③ | [MessageChatMemoryAdvisor](../finance-agent/src/main/java/com/example/agent/controller/ChatController.java#L85-L87) | `HIGHEST + 1000` | 加载对话历史到 Prompt | 保存新消息到记忆 |
+| ③ | **MessageChatMemoryAdvisor**（Spring AI 内置） | `HIGHEST + 1000` | `chatMemory.get(userId)` 加载历史到 Prompt | `chatMemory.add(userId, messages)` 保存新消息 |
 | ④ | [OutputGuardrailAdvisor](../finance-agent/src/main/java/com/example/agent/guardrails/OutputGuardrailAdvisor.java) | `LOWEST - 100` | 空操作 | 金额幻觉检测 |
+| ⑤ | [LlmInteractionLogger](../finance-agent/src/main/java/com/example/agent/debug/LlmInteractionLogger.java) | `LOWEST - 50` | 记录最终 Prompt | 记录 LLM 原始回复 |
+
+> **注意**：`MessageChatMemoryAdvisor` 是 Spring AI 框架内置的 Advisor（`org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor`），不是本项目自定义的。它通过 `MessageChatMemoryAdvisor.builder(chatMemory).conversationId(userId).build()` 构建，其中 `chatMemory` 是我们在 `ChatMemoryConfig` 中注册的 Bean。详见 [3.3 节 ChatMemory 工作原理](#chatmemory-对话记忆)。
 
 **执行顺序图**：
 
 ```
 before 阶段（order 升序，小的先执行）:
-  ① InputGuardrail(-2147483548) → ② ToolCallGuardrail(-2147483348)
-  → ③ ChatMemory(-2147482648) → ④ OutputGuardrail(2147483547, 空操作)
+  ① InputGuardrail(HIGHEST+100) → ② ToolCallGuardrail(HIGHEST+300)
+  → ③ MessageChatMemoryAdvisor(HIGHEST+1000)
+  → ④ OutputGuardrail(LOWEST-100, 空操作)
+  → ⑤ LlmInteractionLogger(LOWEST-50)
   → [LLM 调用 + 工具调用]
 
 after 阶段（调用栈弹出，大的先执行）:
-  ④ OutputGuardrail(2147483547) → ③ ChatMemory(-2147482648)
-  → ② ToolCallGuardrail(-2147483348) → ① InputGuardrail(-2147483548, 空操作)
+  ⑤ LlmInteractionLogger(LOWEST-50) → ④ OutputGuardrail(LOWEST-100)
+  → ③ MessageChatMemoryAdvisor(HIGHEST+1000)
+  → ② ToolCallGuardrail(HIGHEST+300) → ① InputGuardrail(HIGHEST+100, 空操作)
 ```
 
 ### 6.4 Context 数据传递
@@ -540,8 +611,9 @@ String sessionUserId = response.context().get(CONTEXT_USER_ID).toString();
 5. Advisor 链 before() 阶段:
    ├── InputGuardrailAdvisor.before() → "我的余额是多少" → 不是注入，放行
    ├── ToolCallGuardrailAdvisor.before() → 从 context 读取 userId="default"，透传
-   ├── MessageChatMemoryAdvisor.before() → 加载历史消息到 Prompt
-   └── OutputGuardrailAdvisor.before() → 空操作
+   ├── MessageChatMemoryAdvisor.before() → chatMemory.get("default") 加载历史 → 0 条
+   ├── OutputGuardrailAdvisor.before() → 空操作
+   └── LlmInteractionLogger.before() → 记录最终 Prompt 到日志
 
 6. ChatClient 调用 LLM:
    ├── 发送 System Prompt + User Message 到 DeepSeek API
@@ -550,8 +622,9 @@ String sessionUserId = response.context().get(CONTEXT_USER_ID).toString();
    └── 流式返回: "您的默认现金账户当前余额为 ¥20,273.96 元。"
 
 7. Advisor 链 after() 阶段:
+   ├── LlmInteractionLogger.after() → 记录 LLM 原始回复到日志
    ├── OutputGuardrailAdvisor.after() → 提取金额 20273.96，无工具数据对比，跳过
-   ├── MessageChatMemoryAdvisor.after() → 保存本轮对话到 data/memory/default.json
+   ├── MessageChatMemoryAdvisor.after() → chatMemory.add("default", messages) → 异步写入 data/memory/default.json
    ├── ToolCallGuardrailAdvisor.after() → 无 tool_call，跳过审计
    └── InputGuardrailAdvisor.after() → 空操作
 
