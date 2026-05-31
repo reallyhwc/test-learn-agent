@@ -1,5 +1,11 @@
 package com.example.finance.util;
 
+/**
+ * 【XSS 防护工具类】
+ *
+ * <p>提供 HTML 实体转义功能，对用户输入的 {@code < > & " '} 五个字符做转义处理，
+ * 防止跨站脚本注入攻击。在所有 Controller 中写入用户可控文本前调用。
+ */
 public final class XssUtils {
 
     private XssUtils() {}

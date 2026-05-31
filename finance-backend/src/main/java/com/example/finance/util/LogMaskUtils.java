@@ -1,5 +1,14 @@
 package com.example.finance.util;
 
+/**
+ * 【日志脱敏工具类】
+ *
+ * <p>对敏感信息进行脱敏处理后再写入日志，防止明文泄露用户数据。
+ * <ul>
+ *   <li>{@link #maskUserId(String)} — userId 仅保留前 3 后 2 位</li>
+ *   <li>{@link #maskAmount(Object)} — 金额仅显示整数部分位数</li>
+ * </ul>
+ */
 public final class LogMaskUtils {
 
     private LogMaskUtils() {}
