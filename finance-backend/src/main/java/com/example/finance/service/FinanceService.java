@@ -29,11 +29,24 @@ public class FinanceService {
         this.dataStore = dataStore;
     }
 
+    /**
+     * 查询指定用户的全部账户列表。
+     *
+     * @param userId 用户标识
+     * @return 账户列表
+     */
     // 切换数据库后可添加 @Cacheable("accounts")
     public List<Account> listAccounts(String userId) {
         return dataStore.findAllAccountsByUserId(userId);
     }
 
+    /**
+     * 创建新账户。校验 name、type 非空，初始余额默认 0。
+     *
+     * @param account 账户实体
+     * @return 创建成功的账户（含自动生成的 id）
+     * @throws IllegalArgumentException 如 name、type 为空或余额为负
+     */
     public Account createAccount(Account account) {
         if (account.getName() == null || account.getName().isBlank()) {
             throw new IllegalArgumentException("账户名称不能为空");
@@ -50,14 +63,38 @@ public class FinanceService {
         return dataStore.saveAccount(account);
     }
 
+    /**
+     * 按 ID 查询单个账户。
+     *
+     * @param id 账户 ID
+     * @return 账户（如存在），空 Optional（如不存在）
+     */
     public Optional<Account> getAccount(Long id) {
         return dataStore.findAccountById(id);
     }
 
+    /**
+     * 查询账户的当前余额。
+     *
+     * @param accountId 账户 ID
+     * @return 余额（如账户存在），空 Optional（如不存在）
+     */
     public Optional<BigDecimal> getBalance(Long accountId) {
         return dataStore.findAccountById(accountId).map(Account::getBalance);
     }
 
+    /**
+     * 查询交易明细（不分页）。支持按账户、日期、分类、类型多条件筛选。
+     *
+     * @param userId 用户标识
+     * @param accountId 账户 ID 筛选（可选）
+     * @param startDate 起始日期（可选）
+     * @param endDate 结束日期（可选）
+     * @param category 一级分类筛选（可选）
+     * @param subCategory 二级分类筛选（可选）
+     * @param type 交易类型（INCOME/EXPENSE，可选）
+     * @return 符合条件的交易列表
+     */
     public List<Transaction> listTransactions(String userId, Long accountId, LocalDate startDate,
                                                LocalDate endDate, String category,
                                                String subCategory, String type) {
@@ -131,6 +168,14 @@ public class FinanceService {
         }
     }
 
+    /**
+     * 创建交易记录。校验所有必填字段后写入，自动补齐日期（如未提供）。
+     * 同时更新关联账户的余额。
+     *
+     * @param transaction 交易实体（含 accountId、type、amount、category 等）
+     * @return 创建成功的交易记录（含自动生成的 id）
+     * @throws IllegalArgumentException 如必填字段缺失或账户不存在
+     */
     public Transaction createTransaction(Transaction transaction) {
         // 参数校验 — 防止脏数据写入
         if (transaction.getAccountId() == null) {

@@ -22,6 +22,22 @@ import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.stream.Collectors;
 
+/**
+ * 【CSV 文件数据存储】
+ *
+ * <p>以内存 + CSV 文件实现数据持久化，无需数据库。启动时从 CSV 加载数据，
+ * 写入时同时更新内存和持久化到文件。
+ *
+ * <h3>Schema 兼容策略</h3>
+ * 每个实体（Account、Transaction、Category）维护多套 Schema 常量，
+ * 加载时按新→旧顺序尝试，确保旧格式 CSV 文件可正常读取。
+ *
+ * <h3>并发安全</h3>
+ * 使用 {@link ReadWriteLock}：读操作共享锁，写操作独占锁，余额更新与
+ * 持久化在同一个写锁内完成，保证原子性。
+ *
+ * @see com.example.finance.service.FinanceService 服务层
+ */
 @Slf4j
 @Component
 public class CsvDataStore {
@@ -109,6 +125,9 @@ public class CsvDataStore {
             .addColumn("type")
             .build().withHeader();
 
+    /**
+     * 应用启动时初始化：创建数据目录，从 CSV 文件加载分类、账户和交易数据到内存。
+     */
     @PostConstruct
     public void init() {
         log.info("初始化 CsvDataStore，数据目录: {}", dataDir);
@@ -130,6 +149,9 @@ public class CsvDataStore {
 
     // ---- Account operations ----
 
+    /**
+     * 返回全部账户的副本（读锁保护）。
+     */
     public List<Account> findAllAccounts() {
         dataLock.readLock().lock();
         try {
@@ -139,6 +161,9 @@ public class CsvDataStore {
         }
     }
 
+    /**
+     * 按 userId 筛选账户列表。userId 为空时返回全部。
+     */
     public List<Account> findAllAccountsByUserId(String userId) {
         dataLock.readLock().lock();
         try {
@@ -151,6 +176,9 @@ public class CsvDataStore {
         }
     }
 
+    /**
+     * 按 ID 查找账户。优先使用 {@code accountIdIndex} 索引 O(1) 查找，索引未命中时回退到遍历。
+     */
     public Optional<Account> findAccountById(Long id) {
         dataLock.readLock().lock();
         try {
@@ -168,6 +196,10 @@ public class CsvDataStore {
         }
     }
 
+    /**
+     * 保存账户（新增或更新）。新增时自动分配 ID，userId 默认为 "default"。
+     * 更新后立即持久化到 CSV 文件。
+     */
     public Account saveAccount(Account account) {
         dataLock.writeLock().lock();
         try {
