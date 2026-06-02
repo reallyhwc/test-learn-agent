@@ -13,3 +13,7 @@ __pycache__/
 *.egg-info/
 .venv/
 finance-agent-py/data/
+
+# Eval 运行报告（保留目录 + .gitkeep）
+evals/reports/*
+!evals/reports/.gitkeep

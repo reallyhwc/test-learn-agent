@@ -1,0 +1,2 @@
+# 此目录用于存放 eval 运行报告（eval-yyyyMMdd-HHmmss.json）。
+# 报告本身被 .gitignore 排除，此文件用于保留目录结构。
