@@ -30,6 +30,22 @@ evals/
 
 两栈共享同一 `golden-dataset.json`，跑同一组 case，便于对比两栈实际行为差异。详见 [`py/README.md`](./py/README.md)。
 
+## HTML 报告（可视化）
+
+聚合 `reports/eval-*.json` 为单页 HTML（卡片 + 通过率趋势折线图）：
+
+```bash
+python3 scripts/eval-report.py
+open evals/reports/index.html
+```
+
+可选参数：
+- `--format=markdown` 输出 markdown 到 stdout（CI 用 `>> $GITHUB_STEP_SUMMARY`）
+- `--reports-dir=<path>` 指定 reports 目录
+- `--output=<path>` 指定 HTML 输出路径
+
+报告本身 `.gitignored`，仅本地查看或 CI artifact。
+
 ## 当前覆盖
 
 9 组用例，3 个评估维度：

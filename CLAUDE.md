@@ -70,6 +70,12 @@ cd finance-backend && ./mvnw test
 # 跑 Agent Eval（评估 LLM 行为质量，需 LLM_API_KEY + 启动 backend/mcp-server）
 cd finance-agent && ./mvnw test -Dgroups=evals -DexcludedGroups= -Dtest=AgentEvalTest
 
+# 跑 Python 栈 Eval（共享同一份 golden-dataset.json）
+cd finance-agent-py && source .venv/bin/activate && pytest ../evals/py/ -v
+
+# 生成可视化 HTML 报告（聚合 evals/reports/*.json）
+python3 scripts/eval-report.py && open evals/reports/index.html
+
 # 校验 CLAUDE.md 与代码一致性
 bash scripts/claude-check.sh
 
