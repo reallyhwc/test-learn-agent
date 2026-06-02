@@ -8,11 +8,27 @@
 
 ```
 evals/
-├── README.md              # 本文
-├── golden-dataset.json    # Golden Dataset：所有评估用例
+├── README.md              # 本文（总入口 + Java 栈说明）
+├── golden-dataset.json    # Golden Dataset：所有评估用例（两栈共享）
+├── py/                    # Python 栈 eval（见 py/README.md）
+│   ├── README.md
+│   ├── conftest.py        # pytest fixtures
+│   ├── test_agent_eval.py # 主测试
+│   └── report_writer.py
 └── reports/               # 运行后生成的报告（.gitignored，仅保留 .gitkeep）
-    └── eval-yyyyMMdd-HHmmss.json
+    ├── eval-java-yyyyMMdd-HHmmss.json
+    ├── eval-python-yyyyMMdd-HHmmss.json
+    └── index.html          # 由 scripts/eval-report.py 生成
 ```
+
+## 双栈
+
+| 栈 | 实现 | 触发命令 | 报告文件名 |
+|---|---|---|---|
+| Java | `finance-agent/src/test/java/com/example/agent/eval/AgentEvalTest.java` | `cd finance-agent && ./mvnw test -Dgroups=evals -DexcludedGroups=` | `eval-java-*.json` |
+| Python | `evals/py/` | `cd finance-agent-py && source .venv/bin/activate && pytest ../evals/py/` | `eval-python-*.json` |
+
+两栈共享同一 `golden-dataset.json`，跑同一组 case，便于对比两栈实际行为差异。详见 [`py/README.md`](./py/README.md)。
 
 ## 当前覆盖
 

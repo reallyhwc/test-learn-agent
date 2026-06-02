@@ -287,7 +287,8 @@ class AgentEvalTest {
         );
 
         Files.createDirectories(REPORTS_DIR);
-        String fname = "eval-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
+        // 文件名加 -java- 区分双栈，便于 HTML 报告合并展示
+        String fname = "eval-java-" + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".json";
         Path reportFile = REPORTS_DIR.resolve(fname);
         MAPPER.writeValue(reportFile.toFile(), report);
 
