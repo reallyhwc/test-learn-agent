@@ -67,6 +67,9 @@ cd finance-frontend && npm install && npm run dev
 # Run tests
 cd finance-backend && ./mvnw test
 
+# 跑 Agent Eval（评估 LLM 行为质量，需 LLM_API_KEY + 启动 backend/mcp-server）
+cd finance-agent && ./mvnw test -Dgroups=evals -DexcludedGroups= -Dtest=AgentEvalTest
+
 # 校验 CLAUDE.md 与代码一致性
 bash scripts/claude-check.sh
 
@@ -123,6 +126,7 @@ Supported providers: DeepSeek, OpenAI, 通义千问, Groq, Moonshot, SiliconFlow
   - `skills/csv-migration/` — CSV Schema 升级
 - **[`docs/roadmap/`](./docs/roadmap/README.md)** — 5 篇技术演进方向（Guardrails / Evals / HITL / Prompt 管理 / Multi-Agent）
 - **[`docs/troubleshooting/`](./docs/troubleshooting/README.md)** — 失败模式手册
+- **[`evals/`](./evals/README.md)** — Agent 输出质量评估（Golden Dataset + Eval Runner）。改 Prompt 后必跑
 
 ## Git Rules
 

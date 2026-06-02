@@ -61,7 +61,15 @@ System Prompt 是 Agent 项目里**风险最高、约束最弱**的部分：
 
 ### C. 修改后
 
-9. [ ] **回归验证**：跑步骤 3 中的 3 个 case，对比改动前后输出。任何 case 退化必须修复或回滚。
+9. [ ] **回归验证**：
+    - **首选**：跑 Eval 套件，看通过率有无下降
+      ```bash
+      cd finance-agent && ./mvnw test -Dgroups=evals -DexcludedGroups= -Dtest=AgentEvalTest
+      ```
+      报告会输出到 `evals/reports/eval-yyyyMMdd-HHmmss.json`。
+      详见 [`evals/README.md`](../../../evals/README.md)。
+    - **兜底**：跑步骤 3 中的 3 个手工 case，对比改动前后输出。
+    - 任何 case 退化必须修复或回滚。
 
 10. [ ] **Guardrails 联动检查**：新规则是否会被现有 Guardrail 误判？特别注意：
     - `InputGuardrailAdvisor`（PromptInjection 检测）
