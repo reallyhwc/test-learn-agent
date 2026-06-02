@@ -66,6 +66,81 @@ if [ ! -f ".env" ]; then
     exit 1
 fi
 
+# ----------------------------------------------------------------------
+# Preflight：启动前预检
+#   - 必需命令存在
+#   - 关键端口空闲（默认仅 java 栈端口；python 栈端口需 SKIP_PORT=1 或后续动态加）
+#   - .env 关键变量非空
+# 可用 SKIP_PREFLIGHT=1 跳过（仅在不可用环境，如缺 lsof）
+# ----------------------------------------------------------------------
+preflight() {
+    if [ "${SKIP_PREFLIGHT:-0}" = "1" ]; then
+        echo "⚠ SKIP_PREFLIGHT=1：跳过启动前预检"
+        return 0
+    fi
+
+    local fail=0
+    echo "[Preflight] 启动前预检..."
+
+    # 1. 必需命令
+    for cmd in java curl lsof npm; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            echo "  ❌ 缺少命令: $cmd"
+            case "$cmd" in
+                java) echo "     修复：brew install openjdk@17" ;;
+                npm)  echo "     修复：brew install node" ;;
+                lsof) echo "     修复：lsof 通常预装，或 SKIP_PREFLIGHT=1 跳过" ;;
+                *)    echo "     修复：brew install $cmd" ;;
+            esac
+            fail=$((fail+1))
+        fi
+    done
+    # 双栈或 python 单栈需要 python3
+    if [ "$DUAL_MODE" = "true" ] && ! command -v python3 >/dev/null 2>&1; then
+        echo "  ❌ 双栈模式需要 python3（brew install python@3.11）"
+        fail=$((fail+1))
+    fi
+
+    # 2. 端口空闲（仅检查 Java 主栈和 frontend，避免误判 python 单栈场景）
+    local ports_to_check="8080 8081 8082 5173"
+    if [ "$DUAL_MODE" = "true" ]; then
+        ports_to_check="$ports_to_check 8083 8084"
+    fi
+    for port in $ports_to_check; do
+        if command -v lsof >/dev/null 2>&1 && lsof -ti:"$port" >/dev/null 2>&1; then
+            local pid
+            pid=$(lsof -ti:"$port" 2>/dev/null | head -1)
+            echo "  ❌ 端口 $port 已被占用 (PID=$pid)"
+            echo "     修复：kill $pid  或换端口"
+            fail=$((fail+1))
+        fi
+    done
+
+    # 3. .env 关键变量非空（.env 已在外层判断过存在）
+    set -a
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/.env" 2>/dev/null || true
+    set +a
+    for var in LLM_API_KEY LLM_BASE_URL LLM_MODEL; do
+        if [ -z "${!var:-}" ]; then
+            echo "  ❌ .env 中 $var 为空"
+            echo "     修复：编辑 .env 填入 $var=... （参考 docs/troubleshooting/01-llm-401-403.md）"
+            fail=$((fail+1))
+        fi
+    done
+
+    if [ "$fail" -gt 0 ]; then
+        echo ""
+        echo "❌ Preflight 失败（$fail 项）。修正后重试。"
+        echo "  紧急绕过（不推荐）：SKIP_PREFLIGHT=1 ./start-all.sh"
+        exit 1
+    fi
+    echo "✅ Preflight 通过"
+    echo ""
+}
+
+preflight
+
 # Check JAVA_HOME
 if [ -z "$JAVA_HOME" ]; then
     if [ -d "/opt/homebrew/opt/openjdk@17" ]; then
