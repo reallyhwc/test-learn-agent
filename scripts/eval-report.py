@@ -173,33 +173,37 @@ $reports_html
 const DATA = $reports_json;
 
 if (DATA.length > 0) {
-  // 按 stack 分组
+  // X 轴 labels：所有运行的短时间（去重 + 保序）
+  const labelSet = new Set();
+  DATA.forEach(r => labelSet.add(r.runAtShort));
+  const labels = Array.from(labelSet);
+
+  // 按 stack 分组，每个 stack 数据补齐到 labels 长度（缺失填 null，Chart.js 会画断点）
   const byStack = {};
   DATA.forEach(r => {
-    if (!byStack[r.stack]) byStack[r.stack] = [];
-    byStack[r.stack].push({
-      x: r.runAt,
-      y: r.totalCases > 0 ? (r.passCount / r.totalCases * 100) : 0
-    });
+    if (!byStack[r.stack]) byStack[r.stack] = new Map();
+    const rate = r.totalCases > 0 ? (r.passCount / r.totalCases * 100) : 0;
+    byStack[r.stack].set(r.runAtShort, rate);
   });
 
   const colors = { java: '#b71c1c', python: '#0d47a1', unknown: '#7f8c8d' };
   const datasets = Object.keys(byStack).map(stack => ({
     label: stack,
-    data: byStack[stack],
+    data: labels.map(l => byStack[stack].has(l) ? byStack[stack].get(l) : null),
     borderColor: colors[stack] || '#7f8c8d',
     backgroundColor: (colors[stack] || '#7f8c8d') + '33',
     tension: 0.2,
-    pointRadius: 4
+    pointRadius: 4,
+    spanGaps: true
   }));
 
   new Chart(document.getElementById('trendChart'), {
     type: 'line',
-    data: { datasets },
+    data: { labels, datasets },
     options: {
       responsive: true,
       scales: {
-        x: { type: 'category', title: { display: true, text: '运行时间' }},
+        x: { title: { display: true, text: '运行时间 (MM-DD HH:MM)' }, ticks: { maxRotation: 45, minRotation: 0 }},
         y: { min: 0, max: 100, title: { display: true, text: '通过率 (%)' }}
       },
       plugins: { legend: { position: 'top' }}
@@ -263,22 +267,39 @@ def render_report_card(report: dict) -> str:
     return f'<details class="report">{summary}{"".join(cases_html)}</details>'
 
 
+def _short_run_at(run_at: str) -> str:
+    """ISO datetime → 短 label。截掉秒和时区，作为 Chart.js category X 轴标签。
+
+    例：'2026-06-02T01:23:45Z' → '06-02 01:23'
+    """
+    if not run_at or len(run_at) < 16:
+        return run_at or ""
+    # 去掉 'T'，截到分钟
+    s = run_at.replace("T", " ")[:16]
+    # 进一步去掉年（XX-XX HH:MM 更短）
+    if len(s) >= 10 and s[4] == "-" and s[7] == "-":
+        return s[5:]  # 06-02 01:23
+    return s
+
+
 def render_html(reports: list[dict]) -> str:
     # 报告卡片按时间倒序（最新在上）
     cards_html = "\n".join(render_report_card(r) for r in reversed(reports))
     # JSON 注入（仅保留必要字段，避免 HTML 过大）
     chart_data = [{
-        "runAt": r.get("runAt", ""),
+        "runAtShort": _short_run_at(r.get("runAt", "")),
         "stack": r.get("stack", "unknown"),
         "passCount": r.get("passCount", 0),
         "totalCases": r.get("totalCases", 0),
     } for r in reports]
+    # 防御 XSS：JSON 中若含 </script> 会破坏后续 HTML
+    reports_json = json.dumps(chart_data, ensure_ascii=False).replace("</", "<\\/")
     return HTML_TEMPLATE.substitute(
         generated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         report_count=len(reports),
         banner_html=render_banner(reports),
         reports_html=cards_html if reports else "",
-        reports_json=json.dumps(chart_data, ensure_ascii=False),
+        reports_json=reports_json,
     )
 
 

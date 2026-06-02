@@ -83,7 +83,7 @@ jobs:
       - name: Wait for services
         run: |
           set -e
-          wait_for() {
+          wait_for_http() {
             local name=$1 url=$2 max=${3:-60}
             for i in $(seq 1 $max); do
               if curl -sf "$url" > /dev/null 2>&1; then
@@ -95,19 +95,27 @@ jobs:
             echo "❌ $name not ready after ${max}s"
             return 1
           }
-          wait_for "Backend" "http://localhost:8080/actuator/health"
-          if [ "${{ inputs.stack }}" = "java" ] || [ "${{ inputs.stack }}" = "both" ]; then
-            wait_for "MCP (Java)" "http://localhost:8082/actuator/health"
-          fi
-          if [ "${{ inputs.stack }}" = "python" ] || [ "${{ inputs.stack }}" = "both" ]; then
-            # python mcp 没 actuator，用 SSE 端点存在判断
-            for i in $(seq 1 60); do
-              if curl -sf -o /dev/null -m 2 "http://localhost:8083/sse" 2>/dev/null || \
-                 curl -sf -I "http://localhost:8083/" 2>/dev/null > /dev/null; then
-                echo "✅ MCP (Python) ready"; break
+          wait_for_port() {
+            # 用 bash /dev/tcp 探端口存活（比 curl SSE 端点不会 hang）
+            local name=$1 port=$2 max=${3:-60}
+            for i in $(seq 1 $max); do
+              if (echo > /dev/tcp/localhost/$port) 2>/dev/null; then
+                echo "✅ $name port $port open"
+                return 0
               fi
               sleep 1
             done
+            echo "❌ $name port $port not open after ${max}s"
+            return 1
+          }
+          wait_for_http "Backend" "http://localhost:8080/actuator/health"
+          if [ "${{ inputs.stack }}" = "java" ] || [ "${{ inputs.stack }}" = "both" ]; then
+            wait_for_http "MCP (Java)" "http://localhost:8082/actuator/health"
+          fi
+          if [ "${{ inputs.stack }}" = "python" ] || [ "${{ inputs.stack }}" = "both" ]; then
+            # FastMCP 没 actuator/health，且 SSE 端点会保持长连接（curl 会 hang）
+            # 改用 bash /dev/tcp 探端口存活
+            wait_for_port "MCP (Python)" 8083
           fi
 
       # ----------------- 跑 Eval -----------------
@@ -129,8 +137,9 @@ jobs:
         env:
           MCP_SSE_URL: http://localhost:8083/sse
         run: |
-          cd evals/py
-          pytest -v || echo "::warning::Python eval 有失败 case（详情见 artifact）"
+          # 从项目根跑，pytest 自动识别 evals/py/pytest.ini + conftest.py
+          # 不 cd 进 evals/py/，避免某些 cwd 依赖导致的不确定行为
+          pytest evals/py/ -v || echo "::warning::Python eval 有失败 case（详情见 artifact）"
 
       # ----------------- 报告 -----------------
       - name: Generate Markdown summary
