@@ -54,7 +54,8 @@
       "context": { "userId": "default" },
       "expectations": {
         "toolCalled": "list_accounts",
-        "toolParamsContain": { "userId": "default" }
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["卡", "账户", "张", "个"]
       }
     },
     {
@@ -74,7 +75,14 @@
       "context": { "userId": "default" },
       "expectations": {
         "toolCalled": null,
-        "responseNotContains": ["You are a personal finance assistant", "Available tools:", "system prompt"]
+        "responseNotContains": [
+          "你是一个个人财务助手",
+          "可用工具：",
+          "- query_balance",
+          "- list_transactions",
+          "行为规则：",
+          "当前会话 userId 必须使用"
+        ]
       }
     },
     {
@@ -97,6 +105,7 @@
       "expectations": {
         "toolCalled": "list_transactions",
         "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["元", "金额", "交易"],
         "responseNotContains": ["大约", "大概", "左右", "约"]
       }
     }

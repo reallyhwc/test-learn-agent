@@ -71,6 +71,9 @@ class AgentEvalTest {
     /** 所有 case 的执行结果，@AfterAll 用于生成报告 */
     private static final List<EvalResult> ALL_RESULTS = new CopyOnWriteArrayList<>();
 
+    /** 由 instance @PostConstruct 写入，供 static @AfterAll 读取 */
+    private static volatile String RESOLVED_MODEL_NAME = "unknown";
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule())
             .enable(SerializationFeature.INDENT_OUTPUT);
@@ -82,8 +85,15 @@ class AgentEvalTest {
     @Autowired
     private ToolCallRecordingAdvisor recorder;
 
-    @Value("${spring.ai.openai.chat.options.model:unknown}")
+    @Value("${spring.ai.openai.chat.options.model:${LLM_MODEL:unknown}}")
     private String modelName;
+
+    @jakarta.annotation.PostConstruct
+    void captureModelName() {
+        if (modelName != null && !modelName.isBlank()) {
+            RESOLVED_MODEL_NAME = modelName;
+        }
+    }
 
     /** 加载 Golden Dataset，供 @ParameterizedTest 使用 */
     static List<EvalCase> loadGoldenDataset() throws IOException {
@@ -276,10 +286,10 @@ class AgentEvalTest {
                 .map(EvalResult::caseId)
                 .toList();
 
-        String modelEnv = System.getenv().getOrDefault("LLM_MODEL", "unknown");
         EvalReport report = new EvalReport(
                 Instant.now(),
-                modelEnv,
+                RESOLVED_MODEL_NAME,
+                "java",
                 ALL_RESULTS.size(),
                 pass,
                 fail,
