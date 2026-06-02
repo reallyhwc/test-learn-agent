@@ -133,6 +133,34 @@ Supported providers: DeepSeek, OpenAI, 通义千问, Groq, Moonshot, SiliconFlow
 - **[`docs/roadmap/`](./docs/roadmap/README.md)** — 5 篇技术演进方向（Guardrails / Evals / HITL / Prompt 管理 / Multi-Agent）
 - **[`docs/troubleshooting/`](./docs/troubleshooting/README.md)** — 失败模式手册
 - **[`evals/`](./evals/README.md)** — Agent 输出质量评估（Golden Dataset + Eval Runner）。改 Prompt 后必跑
+- **[`.github/workflows/eval.yml`](./.github/workflows/eval.yml)** — CI 上手动触发 Eval（见下方 "CI: 触发 Eval"）
+
+## CI: 触发 Eval
+
+Eval workflow 仅**手动触发**（避免每次 PR 自动消耗 LLM token）。
+
+### 触发步骤
+1. GitHub 仓库页 → `Actions` 标签 → 左侧选 `Eval`
+2. 右上角 `Run workflow` 按钮 → 选 `stack`（java / python / both）→ Run
+
+### 首次使用：配置 Secrets
+在仓库 `Settings` → `Secrets and variables` → `Actions` 配置：
+
+| Secret | 示例 |
+|---|---|
+| `LLM_API_KEY` | 你的 API key |
+| `LLM_BASE_URL` | `https://api.deepseek.com` 或 `https://idealab.alibaba-inc.com/api/openai` |
+| `LLM_MODEL` | `deepseek-chat` 或 `Qwen3.6-Plus-DogFooding` |
+
+未配 secret → workflow 第一步 `Verify Secrets` 会直接 fail。
+
+### 查看结果
+- **Step Summary**（即时）：workflow 页面顶部显示通过率 + 失败 case 表格
+- **Artifact**（30 天保留）：下载 `eval-reports-<stack>` 含完整 JSON + 可本地浏览的 `index.html`
+
+### 失败处理
+- 单个 case 失败不会让 workflow 红 — 只 `::warning::`。完整失败列表在 Step Summary。
+- 服务启动失败（backend/mcp 起不来）会 fail，并自动上传 `service-logs-<stack>` artifact 排查。
 
 ## Git Rules
 

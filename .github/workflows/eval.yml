@@ -1,0 +1,174 @@
+name: Eval
+
+# 仅手动触发，避免每次 PR 自动消耗 LLM token。
+# 在 GitHub 仓库页 → Actions → Eval → Run workflow 启动。
+on:
+  workflow_dispatch:
+    inputs:
+      stack:
+        description: '运行哪个栈？'
+        default: 'java'
+        type: choice
+        options:
+          - java
+          - python
+          - both
+
+jobs:
+  eval:
+    name: Run Eval (${{ inputs.stack }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # Secrets 配置（在仓库 Settings → Secrets and variables → Actions 配置）：
+    #   LLM_API_KEY    必填
+    #   LLM_BASE_URL   必填（如 https://api.deepseek.com）
+    #   LLM_MODEL      必填（如 deepseek-chat）
+    env:
+      LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+      LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
+      LLM_MODEL: ${{ secrets.LLM_MODEL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify Secrets
+        run: |
+          if [ -z "${{ secrets.LLM_API_KEY }}" ]; then
+            echo "::error::secret LLM_API_KEY 未配置。在仓库 Settings → Secrets and variables → Actions 配置。"
+            exit 1
+          fi
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Setup Python 3.11
+        if: inputs.stack == 'python' || inputs.stack == 'both'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # ----------------- 启动依赖服务 -----------------
+      - name: Start Backend (background)
+        run: |
+          cd finance-backend
+          nohup ./mvnw spring-boot:run -q > ../backend.log 2>&1 &
+          echo $! > ../backend.pid
+
+      - name: Start MCP Server (Java, background)
+        if: inputs.stack == 'java' || inputs.stack == 'both'
+        run: |
+          cd finance-mcp-server
+          nohup ./mvnw spring-boot:run -q > ../mcp-java.log 2>&1 &
+          echo $! > ../mcp-java.pid
+
+      - name: Install Python MCP Server deps
+        if: inputs.stack == 'python' || inputs.stack == 'both'
+        run: |
+          cd finance-mcp-server-py
+          pip install -e .
+
+      - name: Start MCP Server (Python, background)
+        if: inputs.stack == 'python' || inputs.stack == 'both'
+        run: |
+          cd finance-mcp-server-py
+          nohup python server.py > ../mcp-python.log 2>&1 &
+          echo $! > ../mcp-python.pid
+
+      - name: Wait for services
+        run: |
+          set -e
+          wait_for() {
+            local name=$1 url=$2 max=${3:-60}
+            for i in $(seq 1 $max); do
+              if curl -sf "$url" > /dev/null 2>&1; then
+                echo "✅ $name ready"
+                return 0
+              fi
+              sleep 1
+            done
+            echo "❌ $name not ready after ${max}s"
+            return 1
+          }
+          wait_for "Backend" "http://localhost:8080/actuator/health"
+          if [ "${{ inputs.stack }}" = "java" ] || [ "${{ inputs.stack }}" = "both" ]; then
+            wait_for "MCP (Java)" "http://localhost:8082/actuator/health"
+          fi
+          if [ "${{ inputs.stack }}" = "python" ] || [ "${{ inputs.stack }}" = "both" ]; then
+            # python mcp 没 actuator，用 SSE 端点存在判断
+            for i in $(seq 1 60); do
+              if curl -sf -o /dev/null -m 2 "http://localhost:8083/sse" 2>/dev/null || \
+                 curl -sf -I "http://localhost:8083/" 2>/dev/null > /dev/null; then
+                echo "✅ MCP (Python) ready"; break
+              fi
+              sleep 1
+            done
+          fi
+
+      # ----------------- 跑 Eval -----------------
+      - name: Run Java Eval
+        if: inputs.stack == 'java' || inputs.stack == 'both'
+        run: |
+          cd finance-agent
+          ./mvnw test -B -Dgroups=evals -DexcludedGroups= -Dtest=AgentEvalTest \
+            || echo "::warning::Java eval 有失败 case（详情见 artifact）"
+
+      - name: Install Python Agent deps
+        if: inputs.stack == 'python' || inputs.stack == 'both'
+        run: |
+          cd finance-agent-py
+          pip install -e ".[dev]"
+
+      - name: Run Python Eval
+        if: inputs.stack == 'python' || inputs.stack == 'both'
+        env:
+          MCP_SSE_URL: http://localhost:8083/sse
+        run: |
+          cd evals/py
+          pytest -v || echo "::warning::Python eval 有失败 case（详情见 artifact）"
+
+      # ----------------- 报告 -----------------
+      - name: Generate Markdown summary
+        if: always()
+        run: |
+          python3 scripts/eval-report.py --format=markdown >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate HTML report
+        if: always()
+        run: |
+          python3 scripts/eval-report.py
+
+      - name: Upload reports artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-reports-${{ inputs.stack }}
+          path: evals/reports/
+          retention-days: 30
+
+      - name: Upload service logs (for debugging)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: service-logs-${{ inputs.stack }}
+          path: |
+            backend.log
+            mcp-java.log
+            mcp-python.log
+          retention-days: 7
+          if-no-files-found: ignore
+
+      # ----------------- 收尾 -----------------
+      - name: Stop services
+        if: always()
+        run: |
+          for pidfile in backend.pid mcp-java.pid mcp-python.pid; do
+            if [ -f "$pidfile" ]; then
+              kill "$(cat "$pidfile")" 2>/dev/null || true
+            fi
+          done
