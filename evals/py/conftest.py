@@ -8,9 +8,10 @@
 """
 from __future__ import annotations
 
-import asyncio
+import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,21 @@ load_dotenv(PROJECT_ROOT / ".env")
 
 # 默认连 Python MCP Server (:8083)；可通过 MCP_SSE_URL 覆盖
 MCP_SSE_URL = os.environ.get("MCP_SSE_URL", "http://localhost:8083/sse")
+
+
+# ────────────────────────────────────────────────────────────
+# 显式加载同目录的 report_writer 模块
+# （不依赖 sys.path 行为，更稳健）
+# ────────────────────────────────────────────────────────────
+def _load_sibling_module(name: str):
+    spec = importlib.util.spec_from_file_location(name, EVAL_DIR / f"{name}.py")
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+_report_writer = _load_sibling_module("report_writer")
 
 
 # ────────────────────────────────────────────────────────────
@@ -62,14 +78,6 @@ def golden_dataset() -> list[dict[str, Any]]:
 # ────────────────────────────────────────────────────────────
 # 旁路 LangChain Agent（与 Java EvalChatClientConfig 对称）
 # ────────────────────────────────────────────────────────────
-@pytest.fixture(scope="session")
-def event_loop():
-    """整个 session 共享一个事件循环，避免 fixture scope=session 和 async case 冲突。"""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 class EvalAgentContext:
     """持有 LangChain agent + 底层 MCP session，方便 ainvoke 与清理。"""
 
@@ -123,7 +131,11 @@ class EvalAgentContext:
 
 @pytest.fixture(scope="session")
 async def eval_agent():
-    """整个 session 复用一个独立 LangChain agent。"""
+    """整个 session 复用一个独立 LangChain agent。
+
+    pytest-asyncio 9.x：session-scope async fixture 需要 pytest.ini 中配置
+    `asyncio_default_fixture_loop_scope = session`（已配置）。
+    """
     try:
         from langchain_mcp_adapters.tools import load_mcp_tools  # noqa: F401
     except ImportError:
@@ -147,33 +159,17 @@ async def eval_agent():
 # ────────────────────────────────────────────────────────────
 # 结果收集（pytest_sessionfinish 写 JSON 报告，见 report_writer.py）
 # ────────────────────────────────────────────────────────────
-@pytest.fixture(scope="session")
-def collected_results() -> list[dict[str, Any]]:
-    """session-scope 列表，test 写入，sessionfinish 钩子读取。"""
-    bucket: list[dict[str, Any]] = []
-    yield bucket
-    # 列表对象引用通过 session.config.stash 透传给 report_writer
-    # 这里 yield 之后 list 仍然存活
-
-
-# pytest 钩子：在 conftest 中定义，让 report_writer 能访问
+# 模块级 bucket：各 test 通过 results_bucket fixture 拿到引用并 append
 _RESULTS_BUCKET: list[dict[str, Any]] = []
-
-
-def pytest_collection_modifyitems(config, items):
-    """把每个 test 自动注入 _results_bucket（由 test 自己 append）。"""
-    config._eval_results_bucket = _RESULTS_BUCKET
 
 
 @pytest.fixture(scope="function")
 def results_bucket() -> list[dict[str, Any]]:
-    """function-scope，每个 case 调用，直接 append 到模块级 _RESULTS_BUCKET。"""
+    """function-scope fixture，返回模块级 _RESULTS_BUCKET 的引用。"""
     return _RESULTS_BUCKET
 
 
 def pytest_sessionfinish(session, exitstatus):
-    """Session 结束时把收集到的结果写 JSON 报告。"""
-    from report_writer import print_summary, write_report
-
-    report_file = write_report(_RESULTS_BUCKET, REPORTS_DIR)
-    print_summary(_RESULTS_BUCKET, report_file)
+    """Session 结束时把收集到的结果写 JSON 报告（位置：evals/reports/）。"""
+    report_file = _report_writer.write_report(_RESULTS_BUCKET, REPORTS_DIR)
+    _report_writer.print_summary(_RESULTS_BUCKET, report_file)

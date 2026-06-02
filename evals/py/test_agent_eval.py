@@ -129,6 +129,20 @@ def assert_response_not_contains(case_id: str, forbidden: list[str], response: s
 # ────────────────────────────────────────────────────────────
 # 主测试
 # ────────────────────────────────────────────────────────────
+def _make_result(case: dict, passed: bool, fail_reason: str | None,
+                 tool_calls: list[dict], response_text: str, start_ms: int) -> dict:
+    """构造单条 EvalResult dict（字段与 Java EvalResult record 对齐）。"""
+    return {
+        "caseId": case["id"],
+        "category": case.get("category"),
+        "pass": passed,
+        "failReason": fail_reason,
+        "toolsCalled": [c["name"] for c in tool_calls],
+        "responseText": response_text,
+        "durationMs": int(time.time() * 1000) - start_ms,
+    }
+
+
 @pytest.mark.parametrize("case", _load_cases_for_param(), ids=lambda c: c["id"])
 async def test_eval_case(case: dict, eval_agent, results_bucket: list[dict]):
     start_ms = int(time.time() * 1000)
@@ -142,7 +156,6 @@ async def test_eval_case(case: dict, eval_agent, results_bucket: list[dict]):
         {"role": "user", "content": case["input"]},
     ]
 
-    fail_reason: str | None = None
     tool_calls: list[dict] = []
     response_text = ""
 
@@ -175,37 +188,12 @@ async def test_eval_case(case: dict, eval_agent, results_bucket: list[dict]):
             assert_response_not_contains(case_id, not_contains, response_text)
 
     except AssertionError as e:
-        fail_reason = str(e)
-        results_bucket.append({
-            "caseId": case_id,
-            "category": case.get("category"),
-            "pass": False,
-            "failReason": fail_reason,
-            "toolsCalled": [c["name"] for c in tool_calls],
-            "responseText": response_text,
-            "durationMs": int(time.time() * 1000) - start_ms,
-        })
+        results_bucket.append(_make_result(case, False, str(e), tool_calls, response_text, start_ms))
         raise
     except Exception as e:
-        fail_reason = f"LLM/MCP 调用异常: {type(e).__name__} - {e}"
-        results_bucket.append({
-            "caseId": case_id,
-            "category": case.get("category"),
-            "pass": False,
-            "failReason": fail_reason,
-            "toolsCalled": [c["name"] for c in tool_calls],
-            "responseText": response_text,
-            "durationMs": int(time.time() * 1000) - start_ms,
-        })
+        reason = f"LLM/MCP 调用异常: {type(e).__name__} - {e}"
+        results_bucket.append(_make_result(case, False, reason, tool_calls, response_text, start_ms))
         raise
 
     # 全部断言通过
-    results_bucket.append({
-        "caseId": case_id,
-        "category": case.get("category"),
-        "pass": True,
-        "failReason": None,
-        "toolsCalled": [c["name"] for c in tool_calls],
-        "responseText": response_text,
-        "durationMs": int(time.time() * 1000) - start_ms,
-    })
+    results_bucket.append(_make_result(case, True, None, tool_calls, response_text, start_ms))

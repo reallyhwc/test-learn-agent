@@ -7,6 +7,9 @@ dependencies = [
     "langchain>=0.3.0",
     "langchain-deepseek>=0.1.0",
     "langchain-mcp-adapters>=0.1.0",
+    # 显式声明：agent.py 和 evals/py/conftest.py 直接 import langchain_openai.ChatOpenAI
+    # 虽然 langchain-deepseek 间接拉入，但避免日后 transitive 依赖断裂
+    "langchain-openai>=0.2.0",
     "langgraph>=0.2.0",
     "fastapi>=0.115.0",
     "sse-starlette>=2.0.0",
