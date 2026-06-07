@@ -6,6 +6,8 @@ import com.example.agent.guardrails.InputGuardrailAdvisor;
 import com.example.agent.guardrails.OutputGuardrailAdvisor;
 import com.example.agent.guardrails.ToolCallGuardrailAdvisor;
 import com.example.agent.metrics.AgentMetrics;
+import com.example.agent.multiagent.AgentType;
+import com.example.agent.multiagent.SupervisorAgent;
 import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -75,6 +77,7 @@ public class ChatController {
     private final ToolCallGuardrailAdvisor toolCallGuardrailAdvisor;
     private final OutputGuardrailAdvisor outputGuardrailAdvisor;
     private final com.example.agent.debug.LlmInteractionLogger llmInteractionLogger;
+    private final SupervisorAgent supervisorAgent;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
@@ -84,7 +87,8 @@ public class ChatController {
                           InputGuardrailAdvisor inputGuardrailAdvisor,
                           ToolCallGuardrailAdvisor toolCallGuardrailAdvisor,
                           OutputGuardrailAdvisor outputGuardrailAdvisor,
-                          com.example.agent.debug.LlmInteractionLogger llmInteractionLogger) {
+                          com.example.agent.debug.LlmInteractionLogger llmInteractionLogger,
+                          SupervisorAgent supervisorAgent) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
@@ -97,6 +101,7 @@ public class ChatController {
         this.toolCallGuardrailAdvisor = toolCallGuardrailAdvisor;
         this.outputGuardrailAdvisor = outputGuardrailAdvisor;
         this.llmInteractionLogger = llmInteractionLogger;
+        this.supervisorAgent = supervisorAgent;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -323,6 +328,152 @@ public class ChatController {
                 Thread.currentThread().interrupt();
             } finally {
                 // 客户端断开或 stream 结束后取消上游 LLM 订阅，及时释放资源
+                subscription.dispose();
+            }
+        };
+
+        return ResponseEntity.ok()
+                .header("X-Accel-Buffering", "no")
+                .body(body);
+    }
+
+    /**
+     * Multi-Agent 流式对话（SSE）。
+     *
+     * <h3>与单 Agent 流的差异</h3>
+     * <ul>
+     *   <li>Supervisor 先做意图分类，选择 Specialist</li>
+     *   <li>thinking 事件扩展 agent 字段，前端可据此显示 Agent 标识</li>
+     *   <li>检测到 add_transaction 写操作时不直接执行，通过 PendingConfirmationStore 拦截</li>
+     * </ul>
+     */
+    @PostMapping(value = "/chat/multi-agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public ResponseEntity<StreamingResponseBody> chatMultiAgentStream(@RequestBody ChatRequest request,
+                                                                       HttpServletResponse response) {
+        String userId = sanitizeUserId(request.getUserId());
+        String message = validateAndTrimMessage(request.getMessage());
+        log.info("MultiAgent stream request from userId={}: {}", userId, message);
+        agentMetrics.recordChatRequest(userId, "multi-agent-stream");
+
+        // 1. Supervisor 分类
+        AgentType target = supervisorAgent.classify(message);
+        log.info("Supervisor classified: userId={}, target={}", userId, target);
+
+        // 2. 拒绝非财务请求
+        if (target == AgentType.OTHER) {
+            StreamingResponseBody body = outputStream -> {
+                String rejectionReply = "我是记账助手，目前只能处理记账和财务分析相关问题。请问有什么可以帮您的？";
+                writeSseData(outputStream, rejectionReply, new AtomicBoolean(false));
+            };
+            return ResponseEntity.ok()
+                    .contentType(MediaType.TEXT_EVENT_STREAM)
+                    .body(body);
+        }
+
+        // 3. 获取 Specialist 的 ChatClient 和 Prompt
+        ChatClient specialistClient = supervisorAgent.getSpecialistClient(target);
+        String systemPrompt = supervisorAgent.getSpecialistPrompt(target);
+        String agentLabel = target == AgentType.BOOKKEEPER ? "记账员" : "分析师";
+
+        // 4. SSE 流式输出（复用现有流式逻辑，使用 Specialist 的 client + prompt）
+        Timer.Sample durationSample = agentMetrics.startTimer();
+
+        var advisor = MessageChatMemoryAdvisor.builder(chatMemory)
+                .conversationId(userId)
+                .build();
+
+        response.setBufferSize(0);
+        response.setHeader("X-Accel-Buffering", "no");
+
+        StreamingResponseBody body = outputStream -> {
+            // 先发送 agent 标识事件
+            try {
+                outputStream.write(("event:thinking\ndata:正在由" + agentLabel + "处理...\n\n")
+                        .getBytes(StandardCharsets.UTF_8));
+                outputStream.flush();
+            } catch (java.io.IOException e) {
+                // ignore
+            }
+
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicBoolean clientGone = new AtomicBoolean(false);
+            AtomicBoolean firstToken = new AtomicBoolean(false);
+            Timer.Sample ttftSample = agentMetrics.startTimer();
+            AtomicLong tokenCount = new AtomicLong(0);
+            long[] startMs = {System.currentTimeMillis()};
+
+            var subscription = specialistClient.prompt()
+                    .system(systemPrompt)
+                    .user(message)
+                    .advisors(spec -> spec
+                            .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
+                            .advisors(inputGuardrailAdvisor, advisor,
+                                    toolCallGuardrailAdvisor, outputGuardrailAdvisor,
+                                    llmInteractionLogger))
+                    .stream()
+                    .chatResponse()
+                    .subscribe(
+                            chatResponse -> {
+                                if (clientGone.get()) return;
+                                var gen = chatResponse.getResult();
+                                if (gen == null) return;
+                                var msg = gen.getOutput();
+                                if (msg == null) return;
+
+                                Object reasoningObj = msg.getMetadata() != null
+                                        ? msg.getMetadata().get("reasoningContent")
+                                        : null;
+                                String reasoning = reasoningObj != null ? reasoningObj.toString() : null;
+                                String text = msg.getText();
+
+                                boolean hasReasoning = reasoning != null && !reasoning.isEmpty();
+                                boolean hasText = text != null && !text.isEmpty();
+                                if ((hasReasoning || hasText) && !firstToken.getAndSet(true)) {
+                                    agentMetrics.recordTtft(userId, ttftSample);
+                                }
+
+                                if (hasReasoning) {
+                                    writeSseThinking(outputStream, reasoning, clientGone);
+                                }
+                                if (hasText) {
+                                    tokenCount.incrementAndGet();
+                                    writeSseData(outputStream, text, clientGone);
+                                }
+                            },
+                            error -> {
+                                String msg = error.getMessage() != null
+                                        ? error.getMessage()
+                                        : error.getClass().getSimpleName();
+                                log.error("MultiAgent stream error for userId={}: {}", userId, msg, error);
+                                agentMetrics.recordLlmError(error.getClass().getSimpleName());
+                                writeSseError(outputStream, "AI 服务异常：" + msg, clientGone);
+                                latch.countDown();
+                            },
+                            () -> {
+                                long elapsedMs = System.currentTimeMillis() - startMs[0];
+                                log.info("MultiAgent stream completed for userId={}, tokens={}", userId, tokenCount.get());
+                                agentMetrics.recordDuration(userId, durationSample);
+                                if (tokenCount.get() == 0 && !clientGone.get()) {
+                                    log.warn("MultiAgent stream completed with 0 tokens for userId={}", userId);
+                                    agentMetrics.recordLlmError("EmptyResponse");
+                                    writeSseError(outputStream,
+                                            "AI 服务返回空响应，请稍后重试",
+                                            clientGone);
+                                }
+                                latch.countDown();
+                            }
+                    );
+
+            try {
+                if (!latch.await(115, TimeUnit.SECONDS)) {
+                    log.warn("MultiAgent stream timed out after 115s for userId={}", userId);
+                    writeSseError(outputStream,
+                            "AI 响应超时（>115s），请简化问题或稍后重试",
+                            clientGone);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            } finally {
                 subscription.dispose();
             }
         };
