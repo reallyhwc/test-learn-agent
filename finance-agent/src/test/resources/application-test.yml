@@ -6,6 +6,8 @@ spring:
       chat:
         options:
           model: ${LLM_MODEL:deepseek-chat}
+          reasoning-effort: low
+          max-tokens: 1024
     mcp:
       client:
         type: SYNC
