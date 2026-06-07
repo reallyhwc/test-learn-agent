@@ -10,7 +10,7 @@ from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 from config_loader import get_llm_config
-from guardrails import REJECTION_REPLY, audit_tool_calls, is_prompt_injection
+from guardrails import REJECTION_REPLY, audit_tool_calls, check_amount_hallucination, extract_amounts, is_prompt_injection
 from memory_manager import MemoryManager
 from system_prompt import build_system_prompt, fetch_account_summary
 
@@ -102,11 +102,22 @@ class FinanceAgent:
         # 第二层防护: 工具调用审计
         audit_tool_calls(result.get("messages", []), user_id)
 
+        # 提取工具返回中的金额用于第三层幻觉检测
+        tool_amounts: list = []
+        for m in result.get("messages", []):
+            if hasattr(m, "type") and m.type == "tool":
+                tool_amounts.extend(extract_amounts(str(m.content)))
+
         output = ""
         for m in reversed(result.get("messages", [])):
             if hasattr(m, "content") and m.type == "ai":
                 output = str(m.content)
                 break
+
+        # 第三层防护: 金额幻觉检测
+        if check_amount_hallucination(output, tool_amounts):
+            logger.warning("OutputGuardrail: 幻觉检测触发 userId=%s", user_id)
+
         memory.append("user", message)
         memory.append("assistant", output)
         return output
@@ -148,4 +159,10 @@ class FinanceAgent:
             yield "\n\n⚠️ AI 响应超时"
 
         memory.append("user", message)
-        memory.append("assistant", "".join(full_response))
+        full_text = "".join(full_response)
+
+        # 第三层防护: 金额幻觉检测
+        if full_text and check_amount_hallucination(full_text, []):
+            logger.warning("OutputGuardrail(stream): 幻觉检测触发 userId=%s", user_id)
+
+        memory.append("assistant", full_text)
