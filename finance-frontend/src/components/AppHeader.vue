@@ -33,6 +33,16 @@
           <el-option value="python" label="Python MCP" />
         </el-select>
       </div>
+      <el-select
+        :model-value="aiStore.agentMode"
+        @change="aiStore.switchAgentMode"
+        size="small"
+        class="mode-select"
+        placeholder="模式"
+      >
+        <el-option value="single" label="Single-Agent" />
+        <el-option value="multi" label="Multi-Agent" />
+      </el-select>
       <el-select v-model="userStore.currentUser" size="small" class="user-select">
         <el-option v-for="u in userStore.users" :key="u.id" :label="u.name" :value="u.id" />
       </el-select>
@@ -104,6 +114,14 @@ async function onMcpChange(type) {
 .header-right { display: flex; align-items: center; gap: 10px; }
 
 .user-select { width: 120px; }
+.mode-select { width: 130px; }
+.mode-select :deep(.el-input__wrapper) {
+  border-radius: var(--theme-radius-tag);
+  background: var(--theme-bg-input);
+  box-shadow: none;
+  border: 1px solid var(--theme-border);
+  transition: background var(--theme-transition), border-color var(--theme-transition);
+}
 .user-select :deep(.el-input__wrapper) {
   border-radius: var(--theme-radius-tag);
   background: var(--theme-bg-input);

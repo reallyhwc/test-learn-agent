@@ -4,10 +4,12 @@ import { apiGet, apiPost } from '../utils/api.js'
 
 const AGENT_KEY = 'finance-agent-type'
 const MCP_KEY = 'finance-mcp-type'
+const AGENT_MODE_KEY = 'finance-agent-mode'
 
 export const useAiStore = defineStore('ai', () => {
   const agentType = ref(localStorage.getItem(AGENT_KEY) || 'java')
   const mcpType = ref(localStorage.getItem(MCP_KEY) || 'java')
+  const agentMode = ref(localStorage.getItem(AGENT_MODE_KEY) || 'single')
   const loading = ref(false)
   const mcpSwitching = ref(false)
 
@@ -26,6 +28,16 @@ export const useAiStore = defineStore('ai', () => {
   const comboLabel = computed(() => {
     return `${agentLabel.value} + ${mcpLabel.value}`
   })
+
+  const agentModeLabel = computed(() => {
+    return agentMode.value === 'multi' ? 'Multi-Agent' : 'Single-Agent'
+  })
+
+  function switchAgentMode(mode) {
+    if (mode === agentMode.value) return
+    agentMode.value = mode
+    localStorage.setItem(AGENT_MODE_KEY, mode)
+  }
 
   async function switchAgent(type) {
     if (type === agentType.value) return
@@ -91,8 +103,8 @@ export const useAiStore = defineStore('ai', () => {
   }
 
   return {
-    agentType, mcpType, loading, mcpSwitching,
-    agentApiPrefix, agentLabel, mcpLabel, comboLabel,
-    switchAgent, switchMcp, fetchConfig,
+    agentType, mcpType, agentMode, loading, mcpSwitching,
+    agentApiPrefix, agentLabel, mcpLabel, comboLabel, agentModeLabel,
+    switchAgent, switchMcp, switchAgentMode, fetchConfig,
   }
 })

@@ -10,7 +10,7 @@
  * - 一个 event 内多个 data: 行用 \n 拼接（W3C SSE spec）
  * - id: / : (comment) 全部忽略
  */
-const EVENT_TYPES = new Set(['data', 'error', 'thinking'])
+const EVENT_TYPES = new Set(['data', 'error', 'thinking', 'confirmation'])
 
 export function createStreamBuffer() {
   let buffer = ''

@@ -5,15 +5,26 @@
       <span class="memory-info" v-if="memoryCount > 0">记忆: {{ memoryCount }}/20 条</span>
     </div>
     <div class="chat-messages" ref="msgContainer" role="log" aria-live="polite">
-      <ChatMessage
-        v-for="m in messages"
-        :key="m.id"
-        :role="m.role"
-        :text="m.text"
-        :thinking="m.thinking"
-        :id="m.id"
-        :streaming="m.streaming"
-      />
+      <template v-for="m in messages" :key="m.id">
+        <ConfirmationCard
+          v-if="m.role === 'confirmation'"
+          :confirmationId="m.confirmationId"
+          :toolName="m.toolName"
+          :description="m.description"
+          :parameters="m.parameters"
+          :expiresAt="m.expiresAt"
+          @confirm="handleConfirm(m)"
+          @cancel="handleCancel(m)"
+        />
+        <ChatMessage
+          v-else
+          :role="m.role"
+          :text="m.text"
+          :thinking="m.thinking"
+          :id="m.id"
+          :streaming="m.streaming"
+        />
+      </template>
       <div v-if="thinking && !messages.length" class="thinking">思考中...</div>
       <div
         v-if="thinking && messages.length && messages[messages.length-1].role === 'assistant' && messages[messages.length-1].streaming"
@@ -49,10 +60,11 @@
 <script setup>
 import { ref, watch, onUnmounted } from 'vue'
 import ChatMessage from './ChatMessage.vue'
+import ConfirmationCard from './ConfirmationCard.vue'
 import { useUserStore } from '../stores/userStore.js'
 import { useAiStore } from '../stores/aiStore.js'
 import { createStreamBuffer } from '../utils/streamParser.js'
-import { apiGet } from '../utils/api.js'
+import { apiGet, apiPost } from '../utils/api.js'
 
 const userStore = useUserStore()
 const aiStore = useAiStore()
@@ -177,6 +189,30 @@ function abort() {
   }
 }
 
+async function handleConfirm(msg) {
+  try {
+    await apiPost('/api/chat/confirm', { confirmationId: msg.confirmationId })
+    const idx = messages.value.findIndex(m => m.confirmationId === msg.confirmationId)
+    if (idx >= 0) {
+      messages.value[idx] = { id: msg.id, role: 'assistant', text: '操作已执行', streaming: false }
+    }
+  } catch (e) {
+    console.error('Confirm failed:', e)
+  }
+}
+
+async function handleCancel(msg) {
+  try {
+    await apiPost('/api/chat/cancel', { confirmationId: msg.confirmationId })
+    const idx = messages.value.findIndex(m => m.confirmationId === msg.confirmationId)
+    if (idx >= 0) {
+      messages.value[idx] = { id: msg.id, role: 'assistant', text: '操作已取消', streaming: false }
+    }
+  } catch (e) {
+    console.error('Cancel failed:', e)
+  }
+}
+
 async function send() {
   if (!input.value.trim() || thinking.value) return
   const text = input.value
@@ -223,7 +259,10 @@ async function send() {
   }, 3000)
 
   try {
-    const res = await fetch(`${aiStore.agentApiPrefix}/chat/stream`, {
+    const endpoint = aiStore.agentMode === 'multi'
+      ? `${aiStore.agentApiPrefix}/chat/multi-agent/stream`
+      : `${aiStore.agentApiPrefix}/chat/stream`
+    const res = await fetch(endpoint, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ message: text, userId: userStore.currentUser }),
@@ -268,6 +307,23 @@ async function send() {
         } else if (evt.type === 'thinking') {
           messages.value[assistantIdx].thinking =
             (messages.value[assistantIdx].thinking || '') + evt.payload
+        } else if (evt.type === 'confirmation') {
+          messages.value[assistantIdx].streaming = false
+          try {
+            const data = JSON.parse(evt.payload)
+            messages.value.push({
+              id: 'confirm-' + Date.now(),
+              role: 'confirmation',
+              confirmationId: data.confirmationId,
+              toolName: data.toolName,
+              description: data.description,
+              parameters: data.parameters,
+              expiresAt: data.expiresAt,
+              streaming: false,
+            })
+          } catch (_) {
+            console.error('[Agent] 解析 confirmation 事件失败:', evt.payload)
+          }
         } else {
           messages.value[assistantIdx].text += evt.payload
         }
