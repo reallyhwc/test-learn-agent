@@ -12,12 +12,13 @@ CLASSIFY_PROMPT = """你是一个意图分类器。分析用户消息，返回�
 只返回分类名称，不要解释。"""
 
 
-def build_supervisor_node(llm=None):
+def build_supervisor_node(llm=None, audit_callback_factory=None):
     """构建 supervisor 节点函数。
 
     Args:
         llm: ChatOpenAI 实例（不绑 MCP 工具），只用于文本分类。
              如果为 None，使用简单的关键词匹配分类。
+        audit_callback_factory: callable(trace_id, user_id) -> LlmAuditCallback。
     """
 
     def supervisor_node(state: dict) -> Command:
@@ -30,14 +31,20 @@ def build_supervisor_node(llm=None):
             return Command(goto="__end__")
 
         last_user_msg = user_msgs[-1]["content"]
+        trace_id = state.get("trace_id", "unknown")
+        user_id = state.get("user_id", "unknown")
 
         # 如果有 LLM，使用 LLM 分类；否则用关键词匹配
         if llm is not None:
             try:
+                config = {}
+                if audit_callback_factory:
+                    callback = audit_callback_factory(trace_id, "supervisor", "classify", user_id)
+                    config = {"callbacks": [callback]}
                 response = llm.invoke([
                     SystemMessage(content=CLASSIFY_PROMPT),
                     {"role": "user", "content": last_user_msg},
-                ])
+                ], config=config)
                 target = response.content.strip().lower()
             except Exception as e:
                 logger.warning("Supervisor 分类失败: %s", e)

@@ -11,9 +11,12 @@ class MultiAgentState(dict):
     """
 
     @classmethod
-    def create(cls, messages=None, next_agent="", pending_confirmation=None):
+    def create(cls, messages=None, next_agent="", pending_confirmation=None,
+               trace_id="", user_id=""):
         return {
             "messages": messages or [],
             "next_agent": next_agent,
             "pending_confirmation": pending_confirmation,
+            "trace_id": trace_id,
+            "user_id": user_id,
         }

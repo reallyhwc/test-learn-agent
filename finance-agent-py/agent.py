@@ -241,21 +241,37 @@ class MultiAgentFinanceAgent:
         self._analyst_agent = create_react_agent(analyst_llm, analyst_tools)
 
         # --- 构建 StateGraph ---
+        from .audit.callbacks import LlmAuditCallback
+
+        def audit_callback_factory(
+            trace_id, agent_name, call_type, user_id
+        ):
+            return LlmAuditCallback(
+                trace_id=trace_id,
+                agent_name=agent_name,
+                call_type=call_type,
+                user_id=user_id,
+            )
+
         self._graph = build_multi_agent_graph(
-            self._supervisor_llm, self._bookkeeper_agent, self._analyst_agent)
+            self._supervisor_llm, self._bookkeeper_agent, self._analyst_agent,
+            audit_callback_factory=audit_callback_factory)
 
         self._initialized = True
         logger.info("Multi-Agent StateGraph 初始化完成")
 
     async def chat(self, user_id: str, message: str) -> str:
         """同步对话。"""
+        import uuid
         from .multiagent.state import MultiAgentState
 
         if is_prompt_injection(message):
             return REJECTION_REPLY
 
+        trace_id = str(uuid.uuid4())
         initial_state = MultiAgentState.create(
-            messages=[{"role": "user", "content": message}])
+            messages=[{"role": "user", "content": message}],
+            trace_id=trace_id, user_id=user_id)
 
         try:
             result = await asyncio.wait_for(
@@ -273,14 +289,17 @@ class MultiAgentFinanceAgent:
 
     async def chat_stream(self, user_id: str, message: str):
         """流式对话 — 逐节点 yield SSE 事件 dict。"""
+        import uuid
         from .multiagent.state import MultiAgentState
 
         if is_prompt_injection(message):
             yield {"data": REJECTION_REPLY}
             return
 
+        trace_id = str(uuid.uuid4())
         initial_state = MultiAgentState.create(
-            messages=[{"role": "user", "content": message}])
+            messages=[{"role": "user", "content": message}],
+            trace_id=trace_id, user_id=user_id)
 
         try:
             async with asyncio.timeout(120):
