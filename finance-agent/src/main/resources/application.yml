@@ -58,3 +58,7 @@ finance:
   audit:
     enabled: true
     log-path: logs/llm-audit/llm-calls.jsonl
+
+prompt:
+  base-dir: ../prompts
+  version: v1

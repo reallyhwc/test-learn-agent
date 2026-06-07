@@ -1,5 +1,6 @@
 package com.example.agent.multiagent;
 
+import com.example.agent.prompt.PromptLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -20,24 +21,24 @@ public class SupervisorAgent {
     private final BookkeeperAgent bookkeeper;
     private final AnalystAgent analyst;
     private final com.example.agent.debug.LlmAuditAdvisor auditAdvisor;
+    private final PromptLoader promptLoader;
 
     static final int MAX_ROUNDS = 2;
 
-    static final String CLASSIFY_PROMPT = """
-            你是一个意图分类器。分析用户消息，返回以下分类之一：
-            - booking: 记账、查余额、查账户、添加交易记录
-            - analysis: 统计汇总、趋势分析、分类占比、对比支出
-            - other: 与个人财务无关的请求（写诗、闲聊、写代码等）
-            只返回分类名称，不要解释。
-            """;
-
     public SupervisorAgent(java.util.Map<String, ChatClient.Builder> builders,
                            BookkeeperAgent bookkeeper, AnalystAgent analyst,
-                           com.example.agent.debug.LlmAuditAdvisor auditAdvisor) {
+                           com.example.agent.debug.LlmAuditAdvisor auditAdvisor,
+                           PromptLoader promptLoader) {
         this.classifyClient = builders.get("supervisorChatClientBuilder").build();
         this.bookkeeper = bookkeeper;
         this.analyst = analyst;
         this.auditAdvisor = auditAdvisor;
+        this.promptLoader = promptLoader;
+    }
+
+    /** 从 prompts/ 加载分类提示（替代原 CLASSIFY_PROMPT 常量） */
+    public String getClassifyPrompt() {
+        return promptLoader.assemble("supervisor", java.util.Map.of());
     }
 
     /**
@@ -47,7 +48,7 @@ public class SupervisorAgent {
         long startNanos = System.nanoTime();
         try {
             var chatResponse = classifyClient.prompt()
-                    .system(CLASSIFY_PROMPT)
+                    .system(getClassifyPrompt())
                     .user(userMessage)
                     .call()
                     .chatResponse();
@@ -68,7 +69,7 @@ public class SupervisorAgent {
                     traceId, "supervisor", "classify", userId,
                     java.time.Instant.now(), durationNs / 1_000_000,
                     new com.example.agent.debug.LlmCallRecord.RequestInfo(
-                            CLASSIFY_PROMPT, userMessage, java.util.List.of(), java.util.List.of()),
+                            getClassifyPrompt(), userMessage, java.util.List.of(), java.util.List.of()),
                     new com.example.agent.debug.LlmCallRecord.ResponseInfo(
                             result != null ? result.trim() : "", java.util.List.of(),
                             chatResponse.getResult().getMetadata() != null
@@ -110,8 +111,8 @@ public class SupervisorAgent {
      */
     public String getSpecialistPrompt(AgentType type) {
         return switch (type) {
-            case BOOKKEEPER -> BookkeeperAgent.SYSTEM_PROMPT;
-            case ANALYST -> AnalystAgent.SYSTEM_PROMPT;
+            case BOOKKEEPER -> bookkeeper.buildSystemPrompt();
+            case ANALYST -> analyst.buildSystemPrompt();
             case OTHER -> null;
         };
     }

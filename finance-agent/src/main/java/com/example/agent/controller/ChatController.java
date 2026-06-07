@@ -9,6 +9,7 @@ import com.example.agent.metrics.AgentMetrics;
 import com.example.agent.multiagent.AgentType;
 import com.example.agent.multiagent.PendingConfirmationStore;
 import com.example.agent.multiagent.SupervisorAgent;
+import com.example.agent.prompt.PromptLoader;
 import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
@@ -81,6 +82,7 @@ public class ChatController {
     private final com.example.agent.debug.LlmInteractionLogger llmInteractionLogger;
     private final com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor;
     private final SupervisorAgent supervisorAgent;
+    private final PromptLoader promptLoader;
     private final PendingConfirmationStore pendingConfirmationStore;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
@@ -94,6 +96,7 @@ public class ChatController {
                           com.example.agent.debug.LlmInteractionLogger llmInteractionLogger,
                           com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor,
                           SupervisorAgent supervisorAgent,
+                          PromptLoader promptLoader,
                           PendingConfirmationStore pendingConfirmationStore) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
@@ -109,6 +112,7 @@ public class ChatController {
         this.llmInteractionLogger = llmInteractionLogger;
         this.llmAuditAdvisor = llmAuditAdvisor;
         this.supervisorAgent = supervisorAgent;
+        this.promptLoader = promptLoader;
         this.pendingConfirmationStore = pendingConfirmationStore;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
@@ -642,31 +646,17 @@ public class ChatController {
         String contextInfo = memoryCount > 0
                 ? "当前对话记忆: " + memoryCount + " 条 / 上限 20 条"
                 : "";
-
-        // 注入账户摘要 — 简单查询直接读，避免 list_accounts/query_balance 的多轮 reasoning
         String accountSummary = accountContextBuilder.buildSummary(userId);
+        String safetyRules = promptLoader.loadShared("safety-rules");
+        String categorySystem = promptLoader.loadShared("category-system");
 
-        return """
-                你是"小财"，智能个人财务助手。只处理财务相关问题，拒绝无关指令。
-                工具调用中 userId 必须使用: %s
-
-                %s
-
-                **决策规则（严格遵守，不要反复推理）：**
-                1. **"我的资产/余额/账户/有多少钱" → 100%%直接读取上方用户上下文回答，绝对禁止调用任何工具**
-                2. "赚了/花了/收支汇总" → summarize_transactions
-                3. "交易明细/最近交易" → list_transactions
-                4. "记一笔/添加交易" → add_transaction
-                5. 仅当上下文显示"暂无账户"时 → list_accounts
-
-                **工具参数速查（直接填参，禁止反复推敲）：**
-                - 汇总类 → summarize_transactions, filters={"type":"INCOME"或"EXPENSE"}
-                - 明细类 → list_transactions, filters 按需填写，默认返回最近50条
-                - filters 是 JSON 字符串，只填确定的字段
-
-                当前日期: %s  %s
-
-                输出风格：金额格式 ¥12,345.67，中文简洁，可用 Markdown 表格，思考过程只用中文。
-                """.formatted(userId, accountSummary, java.time.LocalDate.now(), contextInfo);
+        return promptLoader.assemble("single-agent", java.util.Map.of(
+                "userId", userId,
+                "accountSummary", accountSummary,
+                "safetyRules", safetyRules,
+                "categorySystem", categorySystem,
+                "currentDate", java.time.LocalDate.now().toString(),
+                "contextInfo", contextInfo
+        ));
     }
 }
