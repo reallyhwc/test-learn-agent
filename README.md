@@ -458,6 +458,12 @@ cd finance-frontend && npm run dev                     # :5173
 │   ├── stores/                        Pinia (userStore, aiStore)
 │   └── utils/                         api.js, streamParser.js, markdown.js
 │
+├── .claude/
+│   └── agents/                         Claude Code 子 Agent（项目级）
+│       ├── code-reviewer.md            代码审查专家
+│       ├── eval-runner.md              Eval 评估执行器
+│       └── regression-test.md          AI Agent 回归测试
+│
 ├── .github/workflows/ci.yml           GitHub Actions CI
 ├── .env.example                       LLM 配置模板
 └── githooks/                          commit-msg (Conventional Commits 校验)
@@ -477,19 +483,22 @@ cd finance-frontend && npm run dev                     # :5173
 
 ```mermaid
 graph TB
-    subgraph "Harness 三层体系"
+    subgraph "Harness 四层体系"
         CLAUDE["CLAUDE.md<br/>全局约束入口<br/>Testing / Anti-Patterns / Tech Debt"]
         RULES["Rules 编码规范<br/>8 份规范文档<br/>命名 / 分层 / 异常 / DTO / 测试 / 前端 / MCP / CSV"]
         SKILLS["Skills 操作清单<br/>3 个标准流程<br/>add-model-field / add-mcp-tool / csv-migration"]
+        AGENTS["Agents 子 Agent<br/>3 个项目级 Agent<br/>code-reviewer / eval-runner / regression-test"]
     end
 
     AI["🤖 AI 编程工具"]
     AI -->|"自动读取"| CLAUDE
     AI -->|"按架构匹配"| RULES
     AI -->|"按场景触发"| SKILLS
+    AI -->|"按任务调度"| AGENTS
 
     CLAUDE -->|"全局防御规则"| RULES
     RULES -->|"规范约束"| SKILLS
+    SKILLS -->|"复用流程"| AGENTS
 ```
 
 ### 目录结构
@@ -515,10 +524,12 @@ graph TB
 │   ├── add-mcp-tool/SKILL.md        # "新增 MCP 工具" 7 步清单
 │   └── csv-migration/SKILL.md       # "CSV Schema 升级" 8 步清单
 │
-└── plans/                          # 执行计划（自动生成）
-    └── {feature_name}/
-        ├── implementation_plan.md   # 技术实施计划
-        └── task.md                  # 任务进度清单
+├── plans/                          # 执行计划（自动生成）
+│   └── {feature_name}/
+│       ├── implementation_plan.md   # 技术实施计划
+│       └── task.md                  # 任务进度清单
+│
+└── ../../.claude/agents/           # Claude Code 子 Agent（项目级）
 ```
 
 ### 核心机制
@@ -560,6 +571,52 @@ CLAUDE.md 中内置了从实际踩坑中总结的防御规则：
 | 10 | 前端表单/列表/图表 | finance-frontend |
 | 11 | 测试修复 + 编译验证 | 全部模块 |
 
+#### 4. Agents 子 Agent 调度
+
+在 Skills 之上，项目定义了 3 个**项目级 Claude Code 子 Agent**（`.claude/agents/*.md`），每个 Agent 拥有独立的工具集和运行上下文，通过 YAML frontmatter 声明式配置：
+
+| Agent | 触发场景 | 工具 | 职责 |
+|-------|---------|------|------|
+| **code-reviewer** | 用户提到"review / 审查 / 检查代码" | Read, Grep, Glob, Bash | 对照 CLAUDE.md 规范审查代码：模块依赖顺序、双栈策略、反模式检测、测试覆盖、安全性 |
+| **eval-runner** | 用户提到"跑 eval / 评估 / golden dataset" | Bash, Read, Grep | 运行 Golden Dataset 评估测试，聚合通过率和失败 case，输出结构化报告 |
+| **regression-test** | 用户提到"回归测试 / regression test" | Bash, Read | 执行 `scripts/regression-test.py`，多场景 × 多轮次的 AI Agent 回归测试，验证审计日志质量 |
+
+**Skills vs Agents 的区别：**
+
+| 维度 | Skills | Agents |
+|------|--------|--------|
+| **运行方式** | 加载到主对话上下文中 | 独立子进程，隔离上下文 |
+| **适用场景** | 需要人机交互的流程（确认步骤） | 可独立执行的后台任务 |
+| **Token 消耗** | 占用主对话上下文 | 独立上下文，不影响主对话 |
+| **定义位置** | `.aone_copilot/skills/` | `.claude/agents/` |
+| **配置方式** | Markdown 文档 | YAML frontmatter + Markdown body |
+
+```mermaid
+graph LR
+    subgraph "主对话 Agent"
+        MAIN["主 Agent<br/>理解意图 · 协调调度"]
+    end
+
+    subgraph "项目级子 Agent"
+        CR["code-reviewer<br/>代码审查"]
+        EV["eval-runner<br/>Eval 评估"]
+        RT["regression-test<br/>回归测试"]
+    end
+
+    MAIN -->|"审查代码"| CR
+    MAIN -->|"跑 Eval"| EV
+    MAIN -->|"回归测试"| RT
+
+    CR -->|"审查报告"| MAIN
+    EV -->|"评估报告"| MAIN
+    RT -->|"测试报告"| MAIN
+
+    style MAIN fill:#7c4dff,color:#fff
+    style CR fill:#ff9800,color:#fff
+    style EV fill:#4caf50,color:#fff
+    style RT fill:#2196f3,color:#fff
+```
+
 ### 对 AI 编程的价值
 
 | 没有 Harness | 有 Harness |
@@ -569,6 +626,7 @@ CLAUDE.md 中内置了从实际踩坑中总结的防御规则：
 | AI 改了方法签名，其他调用方编译报错 | Anti-Pattern 要求先 grep 再改 |
 | AI 不知道旧 CSV 缺新列，启动时 crash | CSV 规范要求兼容检测 + 自动补全 |
 | AI 在不同 commit 改不同模块，中间态编译失败 | 规则要求同一 commit 同步所有模块 |
+| AI 跑 Eval/回归测试需手动敲命令 | 对话中说"跑 eval"即自动调度 eval-runner Agent |
 
 ---
 

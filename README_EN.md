@@ -113,6 +113,12 @@ The frontend header displays the current AI provider with a clickable badge.
 │   ├── stores/                        Pinia (userStore, aiStore)
 │   └── utils/                         api.js, streamParser.js, markdown.js
 │
+├── .claude/
+│   └── agents/                         Claude Code sub-agents (project-level)
+│       ├── code-reviewer.md            Code review expert
+│       ├── eval-runner.md              Eval test runner
+│       └── regression-test.md          Regression test runner
+│
 ├── .github/workflows/ci.yml           GitHub Actions CI
 ├── .env.example                       LLM config template
 └── githooks/                          commit-msg (Conventional Commits)
