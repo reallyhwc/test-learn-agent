@@ -13,7 +13,7 @@ def test_build_system_prompt_contains_user_id():
 
     prompt = build_system_prompt("test-user", mock_memory, "")
     assert "test-user" in prompt
-    assert "userId" in prompt.lower() or "用户ID" in prompt
+    assert "userid" in prompt.lower() or "用户ID" in prompt
 
 
 def test_build_system_prompt_contains_date():

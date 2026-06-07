@@ -1,15 +1,25 @@
 """Supervisor 节点：意图分类 + 路由派发。"""
 import logging
+from pathlib import Path
+
 from langchain_core.messages import SystemMessage
 from langgraph.types import Command
 
+from prompt_loader import PromptLoader
+
 logger = logging.getLogger(__name__)
 
-CLASSIFY_PROMPT = """你是一个意图分类器。分析用户消息，返回以下分类之一：
-- booking: 记账、查余额、查账户、添加交易记录
-- analysis: 统计汇总、趋势分析、分类占比、对比支出
-- other: 与个人财务无关的请求
-只返回分类名称，不要解释。"""
+# 项目根 prompts/ 目录 — supervise_node 在 multiagent/ 下，需向上 3 层到项目根
+_PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+
+
+def _get_classify_prompt() -> str:
+    """从 prompts/ 加载 Supervisor 分类提示。"""
+    from config_loader import load_config
+    config = load_config()
+    version = config.get("prompt", {}).get("version", "v1")
+    loader = PromptLoader(str(_PROMPTS_DIR), version)
+    return loader.assemble("supervisor", {})
 
 
 def build_supervisor_node(llm=None, audit_callback_factory=None):
@@ -42,7 +52,7 @@ def build_supervisor_node(llm=None, audit_callback_factory=None):
                     callback = audit_callback_factory(trace_id, "supervisor", "classify", user_id)
                     config = {"callbacks": [callback]}
                 response = llm.invoke([
-                    SystemMessage(content=CLASSIFY_PROMPT),
+                    SystemMessage(content=_get_classify_prompt()),
                     {"role": "user", "content": last_user_msg},
                 ], config=config)
                 target = response.content.strip().lower()
