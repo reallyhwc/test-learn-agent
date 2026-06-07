@@ -10,10 +10,12 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Multi-Agent 配置：创建 3 个独立 ChatClient Bean，各自绑定不同的 MCP 工具子集。
+ * Multi-Agent 配置：创建 3 个独立 ChatClient Builder Bean，各自绑定不同的 MCP 工具子集。
  *
  * <p>ToolCallbackProvider 列表由 Spring AI MCP auto-configuration 注入，
  * 包含全部 5 个 MCP 工具。各 Bean 通过名称过滤绑定子集。
+ *
+ * <p>使用 ChatClient.builder() 独立创建，不依赖自动配置的 ChatClient.Builder Bean。
  */
 @Configuration
 public class MultiAgentConfig {
@@ -26,24 +28,42 @@ public class MultiAgentConfig {
     static final List<String> ANALYST_TOOLS = List.of(
             "list_transactions", "summarize_transactions");
 
+    /**
+     * 默认 ChatClient.Builder（@Primary）— 绑定全部工具，供单 Agent 模式使用。
+     * 同时保证 ChatController 注入 ChatClient.Builder 时能匹配到唯一的 bean。
+     */
+    @Bean
+    @org.springframework.context.annotation.Primary
+    ChatClient.Builder chatClientBuilder(
+            org.springframework.ai.chat.model.ChatModel chatModel,
+            List<ToolCallbackProvider> toolProviders) {
+        return ChatClient.builder(chatModel)
+                .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]));
+    }
+
     @Bean(name = "bookkeeperChatClientBuilder")
-    ChatClient.Builder bookkeeperChatClientBuilder(ChatClient.Builder baseBuilder,
-                                                    List<ToolCallbackProvider> toolProviders) {
+    ChatClient.Builder bookkeeperChatClientBuilder(
+            org.springframework.ai.chat.model.ChatModel chatModel,
+            List<ToolCallbackProvider> toolProviders) {
         var filtered = filterTools(toolProviders, BOOKKEEPER_TOOLS);
-        return baseBuilder.defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+        return ChatClient.builder(chatModel)
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
     }
 
     @Bean(name = "analystChatClientBuilder")
-    ChatClient.Builder analystChatClientBuilder(ChatClient.Builder baseBuilder,
-                                                 List<ToolCallbackProvider> toolProviders) {
+    ChatClient.Builder analystChatClientBuilder(
+            org.springframework.ai.chat.model.ChatModel chatModel,
+            List<ToolCallbackProvider> toolProviders) {
         var filtered = filterTools(toolProviders, ANALYST_TOOLS);
-        return baseBuilder.defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+        return ChatClient.builder(chatModel)
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
     }
 
     @Bean(name = "supervisorChatClientBuilder")
-    ChatClient.Builder supervisorChatClientBuilder(ChatClient.Builder baseBuilder) {
+    ChatClient.Builder supervisorChatClientBuilder(
+            org.springframework.ai.chat.model.ChatModel chatModel) {
         // Supervisor 不绑定任何 MCP 工具，只做文本分类
-        return baseBuilder;
+        return ChatClient.builder(chatModel);
     }
 
     /**

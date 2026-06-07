@@ -8,7 +8,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 
 /**
- * Mock 配置：为集成测试提供替代 ChatClient Bean（不连 LLM）。
+ * Mock 配置：为集成测试提供替代 ChatClient.Builder Bean（不连 LLM）。
  */
 @TestConfiguration
 public class MultiAgentTestConfig {
@@ -20,24 +20,21 @@ public class MultiAgentTestConfig {
     }
 
     @Bean(name = "supervisorChatClientBuilder")
-    @Primary
     ChatClient.Builder supervisorBuilder(ChatModel chatModel) {
         return ChatClient.builder(chatModel);
     }
 
     @Bean(name = "bookkeeperChatClientBuilder")
-    @Primary
     ChatClient.Builder bookkeeperBuilder(ChatModel chatModel) {
         return ChatClient.builder(chatModel);
     }
 
     @Bean(name = "analystChatClientBuilder")
-    @Primary
     ChatClient.Builder analystBuilder(ChatModel chatModel) {
         return ChatClient.builder(chatModel);
     }
 
-    /** 给 ChatController 注入的无名默认 ChatClient.Builder */
+    /** ChatController 使用的默认 ChatClient.Builder（单 Agent 模式） */
     @Bean
     @Primary
     ChatClient.Builder chatClientBuilder(ChatModel chatModel) {
