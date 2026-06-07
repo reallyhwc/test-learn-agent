@@ -15,7 +15,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.io.FileInputStream;
 import java.util.List;
+import java.util.Properties;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
@@ -27,6 +29,30 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @ExtendWith(LlmCondition.class)
 class ChatControllerTest {
+
+    static {
+        loadDotEnv();
+    }
+
+    /** 从 .env 文件加载环境变量到 System Properties（Spring 占位符解析需要） */
+    private static void loadDotEnv() {
+        String[] paths = {"../.env", ".env"};
+        for (String path : paths) {
+            try (FileInputStream in = new FileInputStream(path)) {
+                Properties props = new Properties();
+                props.load(in);
+                props.forEach((key, value) -> {
+                    String envKey = key.toString();
+                    String envValue = value.toString().trim();
+                    if (!envValue.isEmpty()) {
+                        System.setProperty(envKey, envValue);
+                    }
+                });
+                return;
+            } catch (Exception ignored) {
+            }
+        }
+    }
 
     @Autowired
     private MockMvc mockMvc;

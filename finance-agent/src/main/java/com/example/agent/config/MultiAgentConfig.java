@@ -29,16 +29,15 @@ public class MultiAgentConfig {
             "list_transactions", "summarize_transactions");
 
     /**
-     * 默认 ChatClient.Builder（@Primary）— 绑定全部工具，供单 Agent 模式使用。
-     * 同时保证 ChatController 注入 ChatClient.Builder 时能匹配到唯一的 bean。
+     * 默认 ChatClient.Builder（@Primary）— 不预绑定工具，供单 Agent 模式使用。
+     * ChatController 构造函数会自行调用 defaultToolCallbacks() 绑定全量工具。
+     * 同时保证 Spring 注入 ChatClient.Builder 时能匹配到唯一的 bean。
      */
     @Bean
     @org.springframework.context.annotation.Primary
     ChatClient.Builder chatClientBuilder(
-            org.springframework.ai.chat.model.ChatModel chatModel,
-            List<ToolCallbackProvider> toolProviders) {
-        return ChatClient.builder(chatModel)
-                .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]));
+            org.springframework.ai.chat.model.ChatModel chatModel) {
+        return ChatClient.builder(chatModel);
     }
 
     @Bean(name = "bookkeeperChatClientBuilder")

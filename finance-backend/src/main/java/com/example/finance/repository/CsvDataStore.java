@@ -246,6 +246,8 @@ public class CsvDataStore {
                     .filter(t -> subCategory == null || subCategory.equals(t.getSubCategory()))
                     .filter(t -> type == null || t.getType() == type)
                     .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
+                    .sorted(Comparator.comparing(Transaction::getDate).reversed()
+                            .thenComparing(Comparator.comparing(Transaction::getId).reversed()))
                     .collect(Collectors.toList());
         } finally {
             dataLock.readLock().unlock();
@@ -264,6 +266,8 @@ public class CsvDataStore {
                     .filter(t -> subCategory == null || subCategory.equals(t.getSubCategory()))
                     .filter(t -> type == null || t.getType() == type)
                     .filter(t -> userId == null || userId.isBlank() || userId.equals(t.getUserId()))
+                    .sorted(Comparator.comparing(Transaction::getDate).reversed()
+                            .thenComparing(Comparator.comparing(Transaction::getId).reversed()))
                     .collect(Collectors.toList());
 
             long total = filtered.size();
