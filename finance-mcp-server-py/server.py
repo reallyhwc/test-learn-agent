@@ -141,14 +141,14 @@ async def summarize_transactions(user_id: str, filters: str) -> Any:
 async def add_transaction(
     user_id: str,
     account_id: int,
-    transaction_type: str,
+    type: str,
     amount: str,
     category: str,
     sub_category: str,
     note: str = "",
 ) -> Any:
     """添加一笔交易记录。category 和 sub_category 必须同时提供。
-    transaction_type 为交易类型，取值 INCOME 或 EXPENSE。amount 为金额字符串如 "100.50"。
+    type 为交易类型，取值 INCOME 或 EXPENSE。amount 为金额字符串如 "100.50"。
     支出一级分类: 餐饮(外卖/食堂/聚餐/日常餐饮)、交通(公交/打车/加油/日常出行)、
     购物(日用品/服饰/数码)、房租(房租/物业/水电)、娱乐(电影/游戏/旅行)、
     医疗(门诊/药品/体检)、其他(其他支出)。
@@ -166,7 +166,7 @@ async def add_transaction(
         return "添加交易失败，金额格式不正确"
     if amount_decimal <= 0:
         return "添加交易失败，金额必须大于0"
-    type_upper = transaction_type.upper() if transaction_type else ""
+    type_upper = type.upper() if type else ""
     if type_upper not in ("INCOME", "EXPENSE"):
         return "添加交易失败，交易类型必须是 INCOME 或 EXPENSE"
     if not category or not category.strip():
