@@ -19,6 +19,8 @@ import org.springframework.core.Ordered;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,14 +34,18 @@ class LlmAuditAdvisorTest {
     @TempDir
     Path tempDir;
 
-    private Path logFile;
     private LlmAuditAdvisor advisor;
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /** 当前日期的日志文件路径 */
+    private Path todayLogFile() {
+        String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+        return tempDir.resolve("llm-calls-" + today + ".jsonl");
+    }
+
     @BeforeEach
     void setUp() {
-        logFile = tempDir.resolve("llm-calls.jsonl");
-        advisor = new LlmAuditAdvisor(logFile.toString(), true);
+        advisor = new LlmAuditAdvisor(tempDir.toString(), true);
     }
 
     @Test
@@ -54,7 +60,7 @@ class LlmAuditAdvisorTest {
 
     @Test
     void shouldNotWriteWhenDisabled() {
-        var disabledAdvisor = new LlmAuditAdvisor(logFile.toString(), false);
+        var disabledAdvisor = new LlmAuditAdvisor(tempDir.toString(), false);
         var request = mockRequest(List.of(), new java.util.HashMap<>());
         var chain = mock(AdvisorChain.class);
         var response = mockResponse(Map.of(), null);
@@ -62,7 +68,7 @@ class LlmAuditAdvisorTest {
         disabledAdvisor.before(request, chain);
         disabledAdvisor.after(response, chain);
 
-        assertThat(Files.exists(logFile)).isFalse();
+        assertThat(Files.exists(todayLogFile())).isFalse();
     }
 
     @Test
@@ -81,7 +87,7 @@ class LlmAuditAdvisorTest {
         advisor.before(request, chain);
         advisor.after(response, chain);
 
-        String line = Files.readString(logFile).trim();
+        String line = Files.readString(todayLogFile()).trim();
         assertThat(line).isNotEmpty();
         var record = mapper.readTree(line);
         assertThat(record.get("traceId").asText()).isEqualTo("trace-null");
@@ -132,7 +138,7 @@ class LlmAuditAdvisorTest {
         Thread.sleep(5);
         advisor.after(response, chain);
 
-        String line = Files.readString(logFile).trim();
+        String line = Files.readString(todayLogFile()).trim();
         assertThat(line).isNotEmpty();
         var record = mapper.readTree(line);
 
@@ -194,7 +200,7 @@ class LlmAuditAdvisorTest {
         advisor.before(request, chain);
         advisor.after(response, chain);
 
-        String line = Files.readString(logFile).trim();
+        String line = Files.readString(todayLogFile()).trim();
         var record = mapper.readTree(line);
 
         var toolCalls = record.get("response").get("toolCalls");
@@ -221,7 +227,7 @@ class LlmAuditAdvisorTest {
         advisor.before(request, chain);
         advisor.after(response, chain);
 
-        String line = Files.readString(logFile).trim();
+        String line = Files.readString(todayLogFile()).trim();
         var record = mapper.readTree(line);
         assertThat(record.get("traceId").asText()).isEqualTo("unknown");
         assertThat(record.get("agentName").asText()).isEqualTo("unknown");
@@ -240,7 +246,7 @@ class LlmAuditAdvisorTest {
         ChatClientResponse result = advisor.after(response, chain);
 
         assertThat(result).isSameAs(response);
-        assertThat(Files.exists(logFile)).isFalse();
+        assertThat(Files.exists(todayLogFile())).isFalse();
     }
 
     @Test
@@ -251,7 +257,7 @@ class LlmAuditAdvisorTest {
         advisor.writeRecord(record1);
         advisor.writeRecord(record2);
 
-        List<String> lines = Files.readAllLines(logFile);
+        List<String> lines = Files.readAllLines(todayLogFile());
         assertThat(lines).hasSize(2);
         assertThat(lines.get(0)).contains("\"traceId\":\"t1\"");
         assertThat(lines.get(1)).contains("\"traceId\":\"t2\"");
@@ -260,10 +266,10 @@ class LlmAuditAdvisorTest {
 
     @Test
     void writeRecordShouldNotWriteWhenDisabled() {
-        var disabledAdvisor = new LlmAuditAdvisor(logFile.toString(), false);
+        var disabledAdvisor = new LlmAuditAdvisor(tempDir.toString(), false);
         var record = LlmCallRecord.error("t1", "supervisor", "classify", "u1", 100L, null);
         disabledAdvisor.writeRecord(record);
-        assertThat(Files.exists(logFile)).isFalse();
+        assertThat(Files.exists(todayLogFile())).isFalse();
     }
 
     // --- helpers ---

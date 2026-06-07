@@ -20,6 +20,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -27,7 +29,8 @@ import java.util.Map;
 /**
  * 结构化 JSONL 审计日志 Advisor — 记录每次 LLM 调用的完整输入/输出/耗时/Agent 归属。
  *
- * <p>与现有 {@link LlmInteractionLogger} 并存，写入独立文件 {@code logs/llm-audit/llm-calls.jsonl}。
+ * <p>与现有 {@link LlmInteractionLogger} 并存，按天切分日志文件。
+ * 文件路径 {@code logs/llm-audit/llm-calls-YYYY-MM-DD.jsonl}。
  * 配置键 {@code finance.audit.enabled} 控制开关（默认 true）。
  *
  * <h3>使用方式</h3>
@@ -57,21 +60,22 @@ public class LlmAuditAdvisor implements BaseAdvisor {
     private static final String CTX_MESSAGES = "__audit_messages";
     private static final String CTX_TOOLS = "__audit_tools";
 
+    private static final DateTimeFormatter FILE_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
-    private final Path logFilePath;
+    private final Path logDir;
     private final boolean enabled;
 
     public LlmAuditAdvisor(
-            @Value("${finance.audit.log-path:logs/llm-audit/llm-calls.jsonl}") String logPath,
+            @Value("${finance.audit.log-dir:logs/llm-audit}") String logDirPath,
             @Value("${finance.audit.enabled:true}") boolean enabled) {
-        this.logFilePath = Path.of(logPath);
+        this.logDir = Path.of(logDirPath);
         this.enabled = enabled;
         if (enabled) {
             try {
-                Files.createDirectories(logFilePath.getParent());
-                log.info("LlmAuditAdvisor 已启用，日志文件: {}", logFilePath.toAbsolutePath());
+                Files.createDirectories(this.logDir);
+                log.info("LlmAuditAdvisor 已启用，日志目录: {}", this.logDir.toAbsolutePath());
             } catch (IOException e) {
                 log.warn("无法创建审计日志目录: {}", e.getMessage());
             }
@@ -191,8 +195,10 @@ public class LlmAuditAdvisor implements BaseAdvisor {
             return;
         }
         try {
+            String today = LocalDate.now().format(FILE_DATE_FMT);
+            Path file = logDir.resolve("llm-calls-" + today + ".jsonl");
             String json = MAPPER.writeValueAsString(record) + "\n";
-            Files.writeString(logFilePath, json,
+            Files.writeString(file, json,
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             log.debug("写入审计记录失败: {}", e.getMessage());

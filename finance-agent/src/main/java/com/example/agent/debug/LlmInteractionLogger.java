@@ -17,47 +17,51 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.time.LocalDateTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 /**
- * 【LLM 交互日志 Advisor】—— 类似 AOP 切面，记录 ChatClient 与 LLM 之间的每次交互。
+ * LLM 交互日志 —— 每次 LLM 调用一条 JSONL 记录，按天切分日志文件。
  *
- * <p>以追加模式写入 {@code logs/llm-interactions.log}（已在 .gitignore 中忽略），
- * 记录每次请求的完整 Prompt（System + User + 历史消息）和 LLM 返回的完整回复（含工具调用）。</p>
+ * <h3>日志格式</h3>
+ * <pre>{@code
+ * {"ts":"2026-06-07 19:58:30.123","agent":"finance-agent","durationMs":1523,
+ *  "request":{"systemLen":2500,"userMessage":"查余额","historyCount":3},
+ *  "response":{"text":"您的余额...","toolCalls":["list_accounts"],"finishReason":"stop"},
+ *  "tokens":{"input":450,"output":120,"total":570},"model":"deepseek-chat"}
+ * }</pre>
  *
- * <h3>在 Advisor 链中的位置</h3>
- * <p>order = LOWEST_PRECEDENCE - 50，紧贴 ChatModelCallAdvisor（LOWEST）之前，
- * 确保记录的是最终发送给 LLM 的完整 Prompt（已经过所有 Advisor 的 before 处理）。</p>
- *
- * <h3>启用/禁用</h3>
- * <p>通过 {@code finance.debug.log-llm-interactions=true/false} 配置开关，默认 true。</p>
- *
- * <h3>日志文件位置</h3>
- * <p>{@code logs/llm-interactions.log}（项目根目录下，已被 .gitignore 忽略）</p>
+ * <h3>文件路径</h3>
+ * <p>{@code logs/llm-interactions/llm-call-YYYY-MM-DD.jsonl}</p>
  */
 @Slf4j
 @Component
 public class LlmInteractionLogger implements BaseAdvisor {
 
-    private static final DateTimeFormatter TIMESTAMP_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
-    private static final String SEPARATOR = "\n" + "═".repeat(100) + "\n";
-    private static final String SUB_SEPARATOR = "─".repeat(80);
+    private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+    private static final DateTimeFormatter FILE_DATE_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd");
 
-    private final Path logFilePath;
+    private final Path logDir;
     private final boolean enabled;
+    private final ThreadLocal<Instant> callStartTime = new ThreadLocal<>();
+    private final ThreadLocal<String> callUserMessage = new ThreadLocal<>();
+    private final ThreadLocal<Integer> callSystemLen = new ThreadLocal<>();
 
     public LlmInteractionLogger(
-            @Value("${finance.debug.llm-log-path:logs/llm-interactions.log}") String logPath,
+            @Value("${finance.debug.llm-log-dir:logs/llm-interactions}") String logDirPath,
             @Value("${finance.debug.log-llm-interactions:true}") boolean enabled) {
-        this.logFilePath = Path.of(logPath);
+        this.logDir = Path.of(logDirPath);
         this.enabled = enabled;
         if (enabled) {
             try {
-                Files.createDirectories(logFilePath.getParent());
-                log.info("LlmInteractionLogger 已启用，日志文件: {}", logFilePath.toAbsolutePath());
+                Files.createDirectories(this.logDir);
+                log.info("LlmInteractionLogger 已启用，日志目录: {}", this.logDir.toAbsolutePath());
             } catch (IOException e) {
                 log.warn("无法创建日志目录: {}", e.getMessage());
             }
@@ -66,134 +70,173 @@ public class LlmInteractionLogger implements BaseAdvisor {
 
     @Override
     public int getOrder() {
-        // 紧贴 ChatModelCallAdvisor (LOWEST_PRECEDENCE) 之前
-        // 这样 before() 记录的是最终发送给 LLM 的完整 Prompt
-        // after() 记录的是 LLM 的原始回复（未经其他 Advisor 的 after 处理）
         return Ordered.LOWEST_PRECEDENCE - 50;
     }
 
-    /**
-     * 记录发送给 LLM 的完整 Prompt（System + User + 历史消息），追加写入日志文件。
-     */
     @Override
     public ChatClientRequest before(ChatClientRequest request, AdvisorChain chain) {
         if (!enabled) {
             return request;
         }
+        callStartTime.set(Instant.now());
 
-        StringBuilder entry = new StringBuilder();
-        entry.append(SEPARATOR);
-        entry.append("🔼 REQUEST → LLM  |  ").append(LocalDateTime.now().format(TIMESTAMP_FMT)).append("\n");
-        entry.append(SUB_SEPARATOR).append("\n");
-
-        // 记录 Prompt 中的所有消息
         if (request.prompt() != null && request.prompt().getInstructions() != null) {
             List<Message> messages = request.prompt().getInstructions();
-            entry.append("消息数量: ").append(messages.size()).append("\n\n");
-
-            for (int i = 0; i < messages.size(); i++) {
-                Message msg = messages.get(i);
+            for (Message msg : messages) {
                 String role = msg.getMessageType().name();
-                String content = msg.getText();
-
-                entry.append(String.format("[%d] %s", i + 1, role)).append("\n");
-                // System prompt 可能很长，截断展示前 2000 字符
-                if ("SYSTEM".equals(role) && content != null && content.length() > 2000) {
-                    entry.append(content, 0, 2000).append("\n... (截断，共 ").append(content.length()).append(" 字符)\n");
-                } else {
-                    entry.append(content != null ? content : "(null)").append("\n");
+                if ("USER".equals(role) || "HUMAN".equals(role)) {
+                    callUserMessage.set(msg.getText());
                 }
-                entry.append("\n");
+                if ("SYSTEM".equals(role) && msg.getText() != null) {
+                    callSystemLen.set(msg.getText().length());
+                }
             }
         }
-
-        // 记录可用工具（如果有）
-        if (request.prompt() != null && request.prompt().getOptions() != null) {
-            var options = request.prompt().getOptions();
-            entry.append(SUB_SEPARATOR).append("\n");
-            entry.append("模型参数: ").append(options).append("\n");
-        }
-
-        appendToFile(entry.toString());
         return request;
     }
 
-    /**
-     * 记录 LLM 的原始回复（文本 + 工具调用 + Token 用量），追加写入日志文件。
-     */
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         if (!enabled) {
             return response;
         }
 
-        StringBuilder entry = new StringBuilder();
-        entry.append("\n🔽 RESPONSE ← LLM  |  ").append(LocalDateTime.now().format(TIMESTAMP_FMT)).append("\n");
-        entry.append(SUB_SEPARATOR).append("\n");
+        Instant start = callStartTime.get();
+        String userMsg = callUserMessage.get();
+        Integer sysLen = callSystemLen.get();
 
-        ChatResponse chatResponse = response.chatResponse();
-        if (chatResponse == null) {
-            entry.append("(chatResponse 为 null)\n");
-            appendToFile(entry.toString());
+        // 清理 ThreadLocal
+        callStartTime.remove();
+        callUserMessage.remove();
+        callSystemLen.remove();
+
+        if (start == null) {
             return response;
         }
 
-        // 记录 LLM 回复
-        List<Generation> generations = chatResponse.getResults();
-        if (generations != null && !generations.isEmpty()) {
-            for (int i = 0; i < generations.size(); i++) {
-                Generation gen = generations.get(i);
-                AssistantMessage assistantMsg = gen.getOutput();
+        long durationMs = Duration.between(start, Instant.now()).toMillis();
 
-                entry.append(String.format("[Generation %d]\n", i + 1));
+        Map<String, Object> record = new LinkedHashMap<>();
+        record.put("ts", start.atZone(ZoneId.systemDefault()).format(TS_FMT));
+        record.put("agent", "finance-agent");
+        record.put("durationMs", durationMs);
 
-                // 文本回复
-                String text = assistantMsg.getText();
-                if (text != null && !text.isBlank()) {
-                    entry.append("  回复文本: ").append(text).append("\n");
-                }
+        // ---- request ----
+        Map<String, Object> req = new LinkedHashMap<>();
+        if (sysLen != null) {
+            req.put("systemLen", sysLen);
+        }
+        req.put("userMessage", userMsg != null ? userMsg : "");
 
-                // 工具调用
-                List<AssistantMessage.ToolCall> toolCalls = assistantMsg.getToolCalls();
+        // 统计历史消息数量
+        if (response.chatResponse() != null && response.chatResponse().getResults() != null) {
+            // 从 advisor context 中无法直接获取消息数, 设为 0
+            req.put("historyCount", 0);
+        }
+        record.put("request", req);
+
+        // ---- response ----
+        Map<String, Object> resp = new LinkedHashMap<>();
+        ChatResponse chatResponse = response.chatResponse();
+        if (chatResponse != null) {
+            List<Generation> generations = chatResponse.getResults();
+            if (generations != null && !generations.isEmpty()) {
+                Generation gen = generations.get(0);
+                AssistantMessage output = gen.getOutput();
+
+                String text = output.getText();
+                resp.put("text", text != null ? text : "");
+
+                List<AssistantMessage.ToolCall> toolCalls = output.getToolCalls();
                 if (toolCalls != null && !toolCalls.isEmpty()) {
-                    entry.append("  工具调用 (").append(toolCalls.size()).append(" 个):\n");
-                    for (AssistantMessage.ToolCall tc : toolCalls) {
-                        entry.append("    ├── ").append(tc.name()).append("\n");
-                        entry.append("    │   参数: ").append(tc.arguments()).append("\n");
-                    }
+                    resp.put("toolCalls", toolCalls.stream()
+                            .map(tc -> tc.name() + "(" + tc.arguments() + ")")
+                            .toList());
                 }
 
-                // finish reason
                 if (gen.getMetadata() != null && gen.getMetadata().getFinishReason() != null) {
-                    entry.append("  FinishReason: ").append(gen.getMetadata().getFinishReason()).append("\n");
+                    resp.put("finishReason", gen.getMetadata().getFinishReason());
+                }
+            }
+
+            // ---- tokens + model ----
+            if (chatResponse.getMetadata() != null) {
+                var usage = chatResponse.getMetadata().getUsage();
+                if (usage != null) {
+                    Map<String, Object> tokens = new LinkedHashMap<>();
+                    tokens.put("input", usage.getPromptTokens());
+                    tokens.put("output", usage.getCompletionTokens());
+                    tokens.put("total", usage.getTotalTokens());
+                    record.put("tokens", tokens);
+                }
+                if (chatResponse.getMetadata().getModel() != null) {
+                    record.put("model", chatResponse.getMetadata().getModel());
                 }
             }
         }
+        record.put("response", resp);
 
-        // Token 用量
-        if (chatResponse.getMetadata() != null && chatResponse.getMetadata().getUsage() != null) {
-            var usage = chatResponse.getMetadata().getUsage();
-            entry.append("\n  Token 用量: input=").append(usage.getPromptTokens())
-                    .append(", output=").append(usage.getCompletionTokens())
-                    .append(", total=").append(usage.getTotalTokens()).append("\n");
-        }
-
-        // 模型信息
-        if (chatResponse.getMetadata() != null && chatResponse.getMetadata().getModel() != null) {
-            entry.append("  模型: ").append(chatResponse.getMetadata().getModel()).append("\n");
-        }
-
-        entry.append(SEPARATOR);
-        appendToFile(entry.toString());
+        // 写入按日切分的 JSONL 文件
+        writeRecord(record);
         return response;
     }
 
-    private void appendToFile(String content) {
+    private void writeRecord(Map<String, Object> record) {
         try {
-            Files.writeString(logFilePath, content,
+            String today = LocalDate.now().format(FILE_DATE_FMT);
+            Path file = logDir.resolve("llm-call-" + today + ".jsonl");
+            // 用 Jackson 风格的简单 JSON 序列化（避免引入额外依赖）
+            String json = toJson(record);
+            Files.writeString(file, json + "\n",
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             log.debug("写入 LLM 交互日志失败: {}", e.getMessage());
         }
+    }
+
+    /** 简易 JSON 序列化，避免引入 Jackson/Gson 依赖。 */
+    @SuppressWarnings("unchecked")
+    private String toJson(Map<String, Object> map) {
+        StringBuilder sb = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            if (!first) sb.append(",");
+            first = false;
+            sb.append("\"").append(escape(entry.getKey())).append("\":");
+            Object value = entry.getValue();
+            if (value instanceof String s) {
+                sb.append("\"").append(escape(s)).append("\"");
+            } else if (value instanceof Number || value instanceof Boolean) {
+                sb.append(value);
+            } else if (value instanceof Map) {
+                sb.append(toJson((Map<String, Object>) value));
+            } else if (value instanceof List<?> list) {
+                sb.append("[");
+                for (int i = 0; i < list.size(); i++) {
+                    if (i > 0) sb.append(",");
+                    Object item = list.get(i);
+                    if (item instanceof String s) {
+                        sb.append("\"").append(escape(s)).append("\"");
+                    } else {
+                        sb.append("\"").append(escape(String.valueOf(item))).append("\"");
+                    }
+                }
+                sb.append("]");
+            } else if (value == null) {
+                sb.append("null");
+            } else {
+                sb.append("\"").append(escape(String.valueOf(value))).append("\"");
+            }
+        }
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private String escape(String s) {
+        return s.replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "\\r")
+                .replace("\t", "\\t");
     }
 }
