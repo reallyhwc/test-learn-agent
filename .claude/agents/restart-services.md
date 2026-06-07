@@ -34,11 +34,11 @@ bash scripts/restart-all.sh --json 2>&1
 从 stdout 提取最后的 JSON 块（`{...}` 包裹），解析：
 
 - `status`: `"success"` 或 `"failure"`
-- `totalDurationMs`: 总耗时毫秒
+- `totalDurationS`: 总耗时秒
 - `failedService`: 失败服务名（success 时为 null）
 - `failureReason`: 失败原因（success 时为 null）
 - `logFile`: 完整日志文件路径
-- `services[]`: 每个服务的 `name/port/pid/status/startupMs/healthUrl`
+- `services[]`: 每个服务的 `name/port/pid/status/startupS/healthUrl`
 
 ### Step 3: 输出报告
 

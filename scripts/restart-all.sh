@@ -33,7 +33,7 @@ TIMESTAMP=$(date +%Y-%m-%d-%H%M%S)
 LOG_DIR="$SCRIPT_DIR/logs"
 mkdir -p "$LOG_DIR"
 LOG_FILE="$LOG_DIR/restart-$TIMESTAMP.log"
-START_EPOCH=$(date +%s%3N)  # 毫秒级时间戳
+START_EPOCH=$(date +%s)  # 秒级时间戳（macOS 兼容，不用 %N）
 
 # 所有输出同时写入日志文件
 exec > >(tee -a "$LOG_FILE") 2>&1
@@ -71,8 +71,9 @@ detect_java_home() {
 # ------------------------------------------------------------------
 # 工具函数
 # ------------------------------------------------------------------
-now_ms() {
-    echo $(($(date +%s%3N) - START_EPOCH))
+# 从启动到现在的耗时秒数
+elapsed_s() {
+    echo $(($(date +%s) - START_EPOCH))
 }
 
 # 杀端口上的进程（优雅 SIGTERM → 等 3s → SIGKILL → 等 2s 确认）
@@ -81,10 +82,10 @@ kill_port() {
     local pids
     pids=$(lsof -ti:"$port" 2>/dev/null) || true
     if [ -z "$pids" ]; then
-        echo "[$(now_ms)ms] 端口 $port 空闲，无需杀进程"
+        echo "[$(elapsed_s)s] 端口 $port 空闲，无需杀进程"
         return 0
     fi
-    echo "[$(now_ms)ms] 杀掉端口 $port 上的进程: $pids"
+    echo "[$(elapsed_s)s] 杀掉端口 $port 上的进程: $pids"
     for pid in $pids; do
         kill "$pid" 2>/dev/null || true
     done
@@ -92,7 +93,7 @@ kill_port() {
     # 确认已死
     pids=$(lsof -ti:"$port" 2>/dev/null) || true
     if [ -n "$pids" ]; then
-        echo "[$(now_ms)ms] 进程未响应 SIGTERM，强制 SIGKILL: $pids"
+        echo "[$(elapsed_s)s] 进程未响应 SIGTERM，强制 SIGKILL: $pids"
         for pid in $pids; do
             kill -9 "$pid" 2>/dev/null || true
         done
@@ -101,10 +102,10 @@ kill_port() {
     # 再次确认
     pids=$(lsof -ti:"$port" 2>/dev/null) || true
     if [ -n "$pids" ]; then
-        echo "[$(now_ms)ms] ⚠ 端口 $port 仍有进程残留: $pids"
+        echo "[$(elapsed_s)s] ⚠ 端口 $port 仍有进程残留: $pids"
         return 1
     fi
-    echo "[$(now_ms)ms] 端口 $port 已释放"
+    echo "[$(elapsed_s)s] 端口 $port 已释放"
     return 0
 }
 
@@ -114,21 +115,21 @@ wait_for_http() {
     local name=$1
     local url=$2
     local max_wait=${3:-60}
-    local start=$(date +%s%3N)
-    local deadline=$((start + max_wait * 1000))
+    local start=$(date +%s)
+    local deadline=$((start + max_wait))
 
     while true; do
         local http_code
         http_code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 "$url" 2>/dev/null) || true
         if [ "$http_code" = "200" ] || [ "$http_code" = "401" ] || [ "$http_code" = "404" ] || [ "$http_code" = "302" ]; then
-            local elapsed=$(($(date +%s%3N) - start))
-            echo "[${elapsed}ms] ✅ $name 就绪 (HTTP $http_code)"
+            local elapsed=$(($(date +%s) - start))
+            echo "[${elapsed}s] ✅ $name 就绪 (HTTP $http_code)"
             return 0
         fi
-        local now=$(date +%s%3N)
+        local now=$(date +%s)
         if [ $now -ge $deadline ]; then
             local elapsed=$((now - start))
-            echo "[${elapsed}ms] ❌ $name 启动超时 ($max_wait""s)"
+            echo "[${elapsed}s] ❌ $name 启动超时 (${max_wait}s)"
             return 1
         fi
         sleep 2
@@ -140,19 +141,19 @@ wait_for_port() {
     local name=$1
     local port=$2
     local max_wait=${3:-60}
-    local start=$(date +%s%3N)
-    local deadline=$((start + max_wait * 1000))
+    local start=$(date +%s)
+    local deadline=$((start + max_wait))
 
     while true; do
         if lsof -ti:"$port" >/dev/null 2>&1; then
-            local elapsed=$(($(date +%s%3N) - start))
-            echo "[${elapsed}ms] ✅ $name 端口 :$port 已监听"
+            local elapsed=$(($(date +%s) - start))
+            echo "[${elapsed}s] ✅ $name 端口 :$port 已监听"
             return 0
         fi
-        local now=$(date +%s%3N)
+        local now=$(date +%s)
         if [ $now -ge $deadline ]; then
             local elapsed=$((now - start))
-            echo "[${elapsed}ms] ❌ $name 端口 :$port 未在 ${max_wait}s 内监听"
+            echo "[${elapsed}s] ❌ $name 端口 :$port 未在 ${max_wait}s 内监听"
             return 1
         fi
         sleep 2
@@ -162,7 +163,7 @@ wait_for_port() {
 # 检查 npm 依赖
 ensure_npm_deps() {
     if [ ! -d "finance-frontend/node_modules" ] || [ ! -f "finance-frontend/node_modules/.bin/vite" ]; then
-        echo "[$(now_ms)ms] 安装前端依赖..."
+        echo "[$(elapsed_s)s] 安装前端依赖..."
         cd finance-frontend
         if [ -f "package-lock.json" ]; then
             npm ci 2>&1 | tail -3 || npm install 2>&1 | tail -3
@@ -192,7 +193,7 @@ service_status() {
         health_val="\"$health_url\""
     fi
 
-    echo "{\"name\":\"$name\",\"port\":$port,\"pid\":$pid_val,\"status\":\"$status\",\"startupMs\":$startup_ms,\"healthUrl\":$health_val}"
+    echo "{\"name\":\"$name\",\"port\":$port,\"pid\":$pid_val,\"status\":\"$status\",\"startupS\":$startup_ms,\"healthUrl\":$health_val}"
 }
 
 # ------------------------------------------------------------------
@@ -220,7 +221,7 @@ if ! detect_java_home; then
     exit 1
 fi
 export PATH="$JAVA_HOME/bin:$PATH"
-echo "[$(now_ms)ms] JAVA_HOME=$JAVA_HOME ($(java -version 2>&1 | head -1))"
+echo "[$(elapsed_s)s] JAVA_HOME=$JAVA_HOME ($(java -version 2>&1 | head -1))"
 
 # 检查 Python3（仅当 config.yaml 需要时尝试）
 PYTHON_BIN=""
@@ -241,7 +242,7 @@ done
 if [ ${#KILL_FAILURES[@]} -gt 0 ]; then
     echo "⚠ 以下端口未能完全释放: ${KILL_FAILURES[*]}"
 fi
-echo "[$(now_ms)ms] 旧进程清理完成"
+echo "[$(elapsed_s)s] 旧进程清理完成"
 
 # ------------------------------------------------------------------
 # Phase 2: 启动服务（按依赖顺序）
@@ -257,16 +258,16 @@ OVERALL_STATUS="success"
 # --- 2a. Backend :8080 ---
 echo ""
 echo ">> 启动 Backend (:8080)..."
-BACKEND_START=$(date +%s%3N)
+BACKEND_START=$(date +%s)
 cd "$SCRIPT_DIR/finance-backend"
 nohup ./mvnw spring-boot:run -q > "$LOG_DIR/backend.log" 2>&1 &
 BACKEND_PID=$!
 cd "$SCRIPT_DIR"
 if wait_for_http "Backend" "http://localhost:8080/actuator/health" 90; then
-    BACKEND_STARTUP=$(($(date +%s%3N) - BACKEND_START))
+    BACKEND_STARTUP=$(($(date +%s) - BACKEND_START))
     SERVICES_JSON+="$(service_status "backend" 8080 "$BACKEND_PID" "running" "$BACKEND_STARTUP" "http://localhost:8080/actuator/health"),"
 else
-    BACKEND_STARTUP=$(($(date +%s%3N) - BACKEND_START))
+    BACKEND_STARTUP=$(($(date +%s) - BACKEND_START))
     SERVICES_JSON+="$(service_status "backend" 8080 "$BACKEND_PID" "failed" "$BACKEND_STARTUP" "http://localhost:8080/actuator/health"),"
     FAILED_SERVICE="backend"
     FAILED_REASON="Backend :8080 启动超时或健康检查失败"
@@ -277,16 +278,16 @@ fi
 if [ "$OVERALL_STATUS" = "success" ] || [ "$FAILED_SERVICE" = "backend" ]; then
     echo ""
     echo ">> 启动 MCP Server (:8082)..."
-    MCP_START=$(date +%s%3N)
+    MCP_START=$(date +%s)
     cd "$SCRIPT_DIR/finance-mcp-server"
     nohup ./mvnw spring-boot:run -q > "$LOG_DIR/mcp-server.log" 2>&1 &
     MCP_PID=$!
     cd "$SCRIPT_DIR"
     if wait_for_http "MCP Server" "http://localhost:8082/actuator/health" 90; then
-        MCP_STARTUP=$(($(date +%s%3N) - MCP_START))
+        MCP_STARTUP=$(($(date +%s) - MCP_START))
         SERVICES_JSON+="$(service_status "mcp-server" 8082 "$MCP_PID" "running" "$MCP_STARTUP" "http://localhost:8082/actuator/health"),"
     else
-        MCP_STARTUP=$(($(date +%s%3N) - MCP_START))
+        MCP_STARTUP=$(($(date +%s) - MCP_START))
         SERVICES_JSON+="$(service_status "mcp-server" 8082 "$MCP_PID" "failed" "$MCP_STARTUP" "http://localhost:8082/actuator/health"),"
         [ -z "$FAILED_SERVICE" ] && FAILED_SERVICE="mcp-server" && FAILED_REASON="MCP Server :8082 启动超时或健康检查失败"
         OVERALL_STATUS="failure"
@@ -297,17 +298,17 @@ fi
 if [ "$OVERALL_STATUS" = "success" ]; then
     echo ""
     echo ">> 启动 Agent (:8081)..."
-    AGENT_START=$(date +%s%3N)
+    AGENT_START=$(date +%s)
     cd "$SCRIPT_DIR/finance-agent"
     export MCP_SSE_URL="${MCP_SSE_URL:-http://localhost:8082}"
     nohup env MCP_SSE_URL="$MCP_SSE_URL" ./mvnw spring-boot:run -q > "$LOG_DIR/agent.log" 2>&1 &
     AGENT_PID=$!
     cd "$SCRIPT_DIR"
     if wait_for_http "Agent" "http://localhost:8081/actuator/health" 120; then
-        AGENT_STARTUP=$(($(date +%s%3N) - AGENT_START))
+        AGENT_STARTUP=$(($(date +%s) - AGENT_START))
         SERVICES_JSON+="$(service_status "agent" 8081 "$AGENT_PID" "running" "$AGENT_STARTUP" "http://localhost:8081/actuator/health"),"
     else
-        AGENT_STARTUP=$(($(date +%s%3N) - AGENT_START))
+        AGENT_STARTUP=$(($(date +%s) - AGENT_START))
         SERVICES_JSON+="$(service_status "agent" 8081 "$AGENT_PID" "failed" "$AGENT_STARTUP" "http://localhost:8081/actuator/health"),"
         [ -z "$FAILED_SERVICE" ] && FAILED_SERVICE="agent" && FAILED_REASON="Agent :8081 启动超时（LLM 连接可能慢，等待 120s）"
         OVERALL_STATUS="failure"
@@ -318,17 +319,17 @@ fi
 echo ""
 echo ">> 启动 Frontend (:5173)..."
 ensure_npm_deps
-FRONTEND_START=$(date +%s%3N)
+FRONTEND_START=$(date +%s)
 cd "$SCRIPT_DIR/finance-frontend"
 nohup npm run dev > "$LOG_DIR/frontend.log" 2>&1 &
 FRONTEND_PID=$!
 cd "$SCRIPT_DIR"
 # Frontend 用端口监听检测（Vite 不一定有 /actuator/health）
 if wait_for_port "Frontend" 5173 30; then
-    FRONTEND_STARTUP=$(($(date +%s%3N) - FRONTEND_START))
+    FRONTEND_STARTUP=$(($(date +%s) - FRONTEND_START))
     SERVICES_JSON+="$(service_status "frontend" 5173 "$FRONTEND_PID" "running" "$FRONTEND_STARTUP" "http://localhost:5173")"
 else
-    FRONTEND_STARTUP=$(($(date +%s%3N) - FRONTEND_START))
+    FRONTEND_STARTUP=$(($(date +%s) - FRONTEND_START))
     SERVICES_JSON+="$(service_status "frontend" 5173 "$FRONTEND_PID" "failed" "$FRONTEND_STARTUP" "http://localhost:5173")"
     # frontend 失败不影响 overall status（后端服务才是核心）
 fi
@@ -336,7 +337,7 @@ fi
 # ------------------------------------------------------------------
 # Phase 3: 输出结果
 # ------------------------------------------------------------------
-TOTAL_DURATION=$(($(date +%s%3N) - START_EPOCH))
+TOTAL_DURATION=$(($(date +%s) - START_EPOCH))
 
 # 去掉末尾多余逗号（SERVICES_JSON 最后可能没有逗号在前面逻辑中不会出现）
 
@@ -350,7 +351,7 @@ if [ "$JSON_OUTPUT" = true ]; then
     cat <<JSON_END
 {
   "status": "$OVERALL_STATUS",
-  "totalDurationMs": $TOTAL_DURATION,
+  "totalDurationS": $TOTAL_DURATION,
   "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
   "failedService": $(if [ -n "$FAILED_SERVICE" ]; then echo "\"$FAILED_SERVICE\""; else echo "null"; fi),
   "failureReason": $(if [ -n "$FAILED_REASON" ]; then echo "\"$FAILED_REASON\""; else echo "null"; fi),
