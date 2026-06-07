@@ -2,7 +2,7 @@
 name: regression-test
 description: AI Agent 回归测试执行器。运行 5 个端到端场景的耗时采集和审计日志质量校验。用户提到"回归测试"、"跑回归"、"上线前检查"、"性能测试"时自动触发。
 tools: Bash, Read
-model: haiku
+model: inherit
 permissionMode: default
 maxTurns: 15
 color: green
