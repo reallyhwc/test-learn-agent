@@ -7,6 +7,7 @@ import com.example.agent.guardrails.OutputGuardrailAdvisor;
 import com.example.agent.guardrails.ToolCallGuardrailAdvisor;
 import com.example.agent.metrics.AgentMetrics;
 import com.example.agent.multiagent.AgentType;
+import com.example.agent.multiagent.PendingConfirmationStore;
 import com.example.agent.multiagent.SupervisorAgent;
 import io.micrometer.core.instrument.Timer;
 import jakarta.servlet.http.HttpServletResponse;
@@ -27,6 +28,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -78,6 +80,7 @@ public class ChatController {
     private final OutputGuardrailAdvisor outputGuardrailAdvisor;
     private final com.example.agent.debug.LlmInteractionLogger llmInteractionLogger;
     private final SupervisorAgent supervisorAgent;
+    private final PendingConfirmationStore pendingConfirmationStore;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
@@ -88,7 +91,8 @@ public class ChatController {
                           ToolCallGuardrailAdvisor toolCallGuardrailAdvisor,
                           OutputGuardrailAdvisor outputGuardrailAdvisor,
                           com.example.agent.debug.LlmInteractionLogger llmInteractionLogger,
-                          SupervisorAgent supervisorAgent) {
+                          SupervisorAgent supervisorAgent,
+                          PendingConfirmationStore pendingConfirmationStore) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
@@ -102,6 +106,7 @@ public class ChatController {
         this.outputGuardrailAdvisor = outputGuardrailAdvisor;
         this.llmInteractionLogger = llmInteractionLogger;
         this.supervisorAgent = supervisorAgent;
+        this.pendingConfirmationStore = pendingConfirmationStore;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -481,6 +486,44 @@ public class ChatController {
         return ResponseEntity.ok()
                 .header("X-Accel-Buffering", "no")
                 .body(body);
+    }
+
+    /**
+     * HITL 确认执行待定操作。
+     */
+    @PostMapping("/chat/confirm")
+    public ResponseEntity<Map<String, Object>> confirm(@RequestBody Map<String, Object> body) {
+        String confirmationId = (String) body.get("confirmationId");
+        if (confirmationId == null || confirmationId.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("status", "error", "message", "confirmationId 不能为空"));
+        }
+        var pending = pendingConfirmationStore.get(confirmationId);
+        if (pending.isEmpty()) {
+            return ResponseEntity.status(404)
+                    .body(Map.of("status", "error", "message", "确认请求已过期或不存在"));
+        }
+        // TODO: 在完整实现中这里会实际执行工具调用
+        // 目前返回成功状态，工具执行逻辑在后续迭代中完善
+        log.info("HITL confirm: confirmationId={}, toolName={}", confirmationId, pending.get().toolName());
+        return ResponseEntity.ok(Map.of(
+                "status", "ok",
+                "message", "操作已确认执行",
+                "toolName", pending.get().toolName()
+        ));
+    }
+
+    /**
+     * HITL 取消待定操作。
+     */
+    @PostMapping("/chat/cancel")
+    public ResponseEntity<Map<String, String>> cancel(@RequestBody Map<String, Object> body) {
+        String confirmationId = (String) body.get("confirmationId");
+        if (confirmationId != null && !confirmationId.isBlank()) {
+            pendingConfirmationStore.remove(confirmationId);
+            log.info("HITL cancel: confirmationId={}", confirmationId);
+        }
+        return ResponseEntity.ok(Map.of("status", "cancelled", "message", "操作已取消"));
     }
 
     private void writeSseData(OutputStream out, String token, AtomicBoolean clientGone) {
