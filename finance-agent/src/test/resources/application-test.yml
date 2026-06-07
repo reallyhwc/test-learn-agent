@@ -16,6 +16,8 @@ spring:
 
 finance:
   memory-dir: target/test-memory
+  audit:
+    enabled: false
 
 management:
   endpoints:

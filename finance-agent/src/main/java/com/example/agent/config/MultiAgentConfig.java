@@ -28,6 +28,12 @@ public class MultiAgentConfig {
     static final List<String> ANALYST_TOOLS = List.of(
             "list_transactions", "summarize_transactions");
 
+    private final com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor;
+
+    public MultiAgentConfig(com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor) {
+        this.llmAuditAdvisor = llmAuditAdvisor;
+    }
+
     /**
      * 默认 ChatClient.Builder（@Primary）— 不预绑定工具，供单 Agent 模式使用。
      * ChatController 构造函数会自行调用 defaultToolCallbacks() 绑定全量工具。
@@ -37,7 +43,8 @@ public class MultiAgentConfig {
     @org.springframework.context.annotation.Primary
     ChatClient.Builder chatClientBuilder(
             org.springframework.ai.chat.model.ChatModel chatModel) {
-        return ChatClient.builder(chatModel);
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     @Bean(name = "bookkeeperChatClientBuilder")
@@ -46,7 +53,8 @@ public class MultiAgentConfig {
             List<ToolCallbackProvider> toolProviders) {
         var filtered = filterTools(toolProviders, BOOKKEEPER_TOOLS);
         return ChatClient.builder(chatModel)
-                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]))
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     @Bean(name = "analystChatClientBuilder")
@@ -55,14 +63,16 @@ public class MultiAgentConfig {
             List<ToolCallbackProvider> toolProviders) {
         var filtered = filterTools(toolProviders, ANALYST_TOOLS);
         return ChatClient.builder(chatModel)
-                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]))
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     @Bean(name = "supervisorChatClientBuilder")
     ChatClient.Builder supervisorChatClientBuilder(
             org.springframework.ai.chat.model.ChatModel chatModel) {
         // Supervisor 不绑定任何 MCP 工具，只做文本分类
-        return ChatClient.builder(chatModel);
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     /**

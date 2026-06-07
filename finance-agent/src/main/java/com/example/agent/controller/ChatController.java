@@ -79,6 +79,7 @@ public class ChatController {
     private final ToolCallGuardrailAdvisor toolCallGuardrailAdvisor;
     private final OutputGuardrailAdvisor outputGuardrailAdvisor;
     private final com.example.agent.debug.LlmInteractionLogger llmInteractionLogger;
+    private final com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor;
     private final SupervisorAgent supervisorAgent;
     private final PendingConfirmationStore pendingConfirmationStore;
 
@@ -91,6 +92,7 @@ public class ChatController {
                           ToolCallGuardrailAdvisor toolCallGuardrailAdvisor,
                           OutputGuardrailAdvisor outputGuardrailAdvisor,
                           com.example.agent.debug.LlmInteractionLogger llmInteractionLogger,
+                          com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor,
                           SupervisorAgent supervisorAgent,
                           PendingConfirmationStore pendingConfirmationStore) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
@@ -105,6 +107,7 @@ public class ChatController {
         this.toolCallGuardrailAdvisor = toolCallGuardrailAdvisor;
         this.outputGuardrailAdvisor = outputGuardrailAdvisor;
         this.llmInteractionLogger = llmInteractionLogger;
+        this.llmAuditAdvisor = llmAuditAdvisor;
         this.supervisorAgent = supervisorAgent;
         this.pendingConfirmationStore = pendingConfirmationStore;
         this.chatClient = chatClientBuilder
@@ -138,7 +141,8 @@ public class ChatController {
     public ChatResponse chat(@RequestBody ChatRequest request) {
         String userId = sanitizeUserId(request.getUserId());
         String message = validateAndTrimMessage(request.getMessage());
-        log.info("Chat request from userId={}: {}", userId, message);
+        String traceId = java.util.UUID.randomUUID().toString();
+        log.info("Chat request traceId={} userId={}: {}", traceId, userId, message);
         long startMs = System.currentTimeMillis();
         agentMetrics.recordChatRequest(userId, "normal");
 
@@ -157,9 +161,13 @@ public class ChatController {
                             .user(message)
                             .advisors(spec -> spec
                                     .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
+                                    .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, traceId)
+                                    .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "single-agent")
+                                    .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute")
+                                    .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                                     .advisors(inputGuardrailAdvisor, advisor,
                                             toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                            llmInteractionLogger))
+                                            llmInteractionLogger, llmAuditAdvisor))
                             .call()
                             .chatResponse()
             ).get(SYNC_CHAT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -212,7 +220,8 @@ public class ChatController {
                                                              HttpServletResponse response) {
         String userId = sanitizeUserId(request.getUserId());
         String message = validateAndTrimMessage(request.getMessage());
-        log.info("Stream chat request from userId={}: {}", userId, message);
+        String traceId = java.util.UUID.randomUUID().toString();
+        log.info("Stream chat request traceId={} userId={}: {}", traceId, userId, message);
         agentMetrics.recordChatRequest(userId, "stream");
 
         Timer.Sample durationSample = agentMetrics.startTimer();
@@ -242,9 +251,13 @@ public class ChatController {
                     .user(message)
                     .advisors(spec -> spec
                             .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, traceId)
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "single-agent")
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute")
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
                                     toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                    llmInteractionLogger))
+                                    llmInteractionLogger, llmAuditAdvisor))
                     .stream()
                     .chatResponse()
                     .subscribe(
@@ -357,12 +370,13 @@ public class ChatController {
                                                                        HttpServletResponse response) {
         String userId = sanitizeUserId(request.getUserId());
         String message = validateAndTrimMessage(request.getMessage());
-        log.info("MultiAgent stream request from userId={}: {}", userId, message);
+        String traceId = java.util.UUID.randomUUID().toString();
+        log.info("MultiAgent stream request traceId={} userId={}: {}", traceId, userId, message);
         agentMetrics.recordChatRequest(userId, "multi-agent-stream");
 
-        // 1. Supervisor 分类
-        AgentType target = supervisorAgent.classify(message);
-        log.info("Supervisor classified: userId={}, target={}", userId, target);
+        // 1. Supervisor 分类（含审计日志）
+        AgentType target = supervisorAgent.classify(message, traceId, userId);
+        log.info("Supervisor classified: traceId={} userId={}, target={}", traceId, userId, target);
 
         // 2. 拒绝非财务请求
         if (target == AgentType.OTHER) {
@@ -379,6 +393,7 @@ public class ChatController {
         ChatClient specialistClient = supervisorAgent.getSpecialistClient(target);
         String systemPrompt = supervisorAgent.getSpecialistPrompt(target);
         String agentLabel = target == AgentType.BOOKKEEPER ? "记账员" : "分析师";
+        String agentName = target == AgentType.BOOKKEEPER ? "bookkeeper" : "analyst";
 
         // 4. SSE 流式输出（复用现有流式逻辑，使用 Specialist 的 client + prompt）
         Timer.Sample durationSample = agentMetrics.startTimer();
@@ -412,9 +427,13 @@ public class ChatController {
                     .user(message)
                     .advisors(spec -> spec
                             .param(com.example.agent.guardrails.ToolCallGuardrailAdvisor.CONTEXT_USER_ID, userId)
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, traceId)
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, agentName)
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute")
+                            .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
                                     toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                    llmInteractionLogger))
+                                    llmInteractionLogger, llmAuditAdvisor))
                     .stream()
                     .chatResponse()
                     .subscribe(
@@ -449,14 +468,14 @@ public class ChatController {
                                 String msg = error.getMessage() != null
                                         ? error.getMessage()
                                         : error.getClass().getSimpleName();
-                                log.error("MultiAgent stream error for userId={}: {}", userId, msg, error);
+                                log.error("MultiAgent stream error traceId={} userId={}: {}", traceId, userId, msg, error);
                                 agentMetrics.recordLlmError(error.getClass().getSimpleName());
                                 writeSseError(outputStream, "AI 服务异常：" + msg, clientGone);
                                 latch.countDown();
                             },
                             () -> {
                                 long elapsedMs = System.currentTimeMillis() - startMs[0];
-                                log.info("MultiAgent stream completed for userId={}, tokens={}", userId, tokenCount.get());
+                                log.info("MultiAgent stream completed traceId={} userId={}, tokens={}", traceId, userId, tokenCount.get());
                                 agentMetrics.recordDuration(userId, durationSample);
                                 if (tokenCount.get() == 0 && !clientGone.get()) {
                                     log.warn("MultiAgent stream completed with 0 tokens for userId={}", userId);

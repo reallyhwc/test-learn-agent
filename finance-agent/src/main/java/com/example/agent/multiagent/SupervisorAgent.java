@@ -19,6 +19,7 @@ public class SupervisorAgent {
     private final ChatClient classifyClient;
     private final BookkeeperAgent bookkeeper;
     private final AnalystAgent analyst;
+    private final com.example.agent.debug.LlmAuditAdvisor auditAdvisor;
 
     static final int MAX_ROUNDS = 2;
 
@@ -31,28 +32,63 @@ public class SupervisorAgent {
             """;
 
     public SupervisorAgent(java.util.Map<String, ChatClient.Builder> builders,
-                           BookkeeperAgent bookkeeper, AnalystAgent analyst) {
+                           BookkeeperAgent bookkeeper, AnalystAgent analyst,
+                           com.example.agent.debug.LlmAuditAdvisor auditAdvisor) {
         this.classifyClient = builders.get("supervisorChatClientBuilder").build();
         this.bookkeeper = bookkeeper;
         this.analyst = analyst;
+        this.auditAdvisor = auditAdvisor;
     }
 
     /**
-     * 调用 LLM 做意图分类。
+     * 调用 LLM 做意图分类，含审计日志记录。
      */
-    public AgentType classify(String userMessage) {
+    public AgentType classify(String userMessage, String traceId, String userId) {
+        long startNanos = System.nanoTime();
         try {
-            String result = classifyClient.prompt()
+            var chatResponse = classifyClient.prompt()
                     .system(CLASSIFY_PROMPT)
                     .user(userMessage)
                     .call()
-                    .content();
+                    .chatResponse();
+            long durationNs = System.nanoTime() - startNanos;
+
+            String result = chatResponse.getResult().getOutput().getText();
+
+            // 构建审计记录
+            var usage = chatResponse.getMetadata() != null && chatResponse.getMetadata().getUsage() != null
+                    ? chatResponse.getMetadata().getUsage() : null;
+            var tokenUsage = usage != null
+                    ? new com.example.agent.debug.LlmCallRecord.TokenUsage(
+                            usage.getPromptTokens(), usage.getCompletionTokens(), usage.getTotalTokens())
+                    : null;
+            String model = chatResponse.getMetadata() != null ? chatResponse.getMetadata().getModel() : null;
+
+            var record = new com.example.agent.debug.LlmCallRecord(
+                    traceId, "supervisor", "classify", userId,
+                    java.time.Instant.now(), durationNs / 1_000_000,
+                    new com.example.agent.debug.LlmCallRecord.RequestInfo(
+                            CLASSIFY_PROMPT, userMessage, java.util.List.of(), java.util.List.of()),
+                    new com.example.agent.debug.LlmCallRecord.ResponseInfo(
+                            result != null ? result.trim() : "", java.util.List.of(),
+                            chatResponse.getResult().getMetadata() != null
+                                    && chatResponse.getResult().getMetadata().getFinishReason() != null
+                                    ? chatResponse.getResult().getMetadata().getFinishReason() : null),
+                    tokenUsage, model, null);
+            auditAdvisor.writeRecord(record);
+
             if (result == null) return AgentType.OTHER;
             String trimmed = result.trim().toLowerCase();
             if (trimmed.contains("booking")) return AgentType.BOOKKEEPER;
             if (trimmed.contains("analysis")) return AgentType.ANALYST;
             return AgentType.OTHER;
         } catch (Exception e) {
+            long durationNs = System.nanoTime() - startNanos;
+            var errorRecord = com.example.agent.debug.LlmCallRecord.error(
+                    traceId, "supervisor", "classify", userId,
+                    durationNs / 1_000_000, e.getMessage());
+            auditAdvisor.writeRecord(errorRecord);
+
             log.warn("意图分类失败，fallback to OTHER: {}", e.getMessage());
             return AgentType.OTHER;
         }

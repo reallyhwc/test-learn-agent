@@ -30,7 +30,7 @@ class MultiAgentIntegrationTest {
     @Test
     void supervisorShouldClassifyWithoutError() {
         // 测试分类不抛异常（mock LLM 不可用时会 fallback 到 OTHER）
-        AgentType result = supervisorAgent.classify("记一笔午餐30元");
+        AgentType result = supervisorAgent.classify("记一笔午餐30元", "test-trace-1", "test-user");
         // mock 环境下 LLM 不可用，classify() 会 catch 异常并返回 OTHER
         assertThat(result).isNotNull();
     }
@@ -38,7 +38,7 @@ class MultiAgentIntegrationTest {
     @Test
     void supervisorShouldReturnOtherForUnknownInput() {
         // 非财务输入应返回 OTHER
-        AgentType result = supervisorAgent.classify("帮我写首诗");
+        AgentType result = supervisorAgent.classify("帮我写首诗", "test-trace-2", "test-user");
         assertThat(result).isNotNull();
     }
 

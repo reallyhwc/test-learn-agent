@@ -53,3 +53,8 @@ otel:
   exporter:
     otlp:
       endpoint: http://localhost:4318
+
+finance:
+  audit:
+    enabled: true
+    log-path: logs/llm-audit/llm-calls.jsonl

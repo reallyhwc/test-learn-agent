@@ -19,6 +19,14 @@ public class MultiAgentTestConfig {
         return Mockito.mock(ChatModel.class);
     }
 
+    @Bean
+    @Primary
+    com.example.agent.debug.LlmAuditAdvisor mockAuditAdvisor() {
+        var mock = Mockito.mock(com.example.agent.debug.LlmAuditAdvisor.class);
+        Mockito.when(mock.getName()).thenReturn("mockAuditAdvisor");
+        return mock;
+    }
+
     @Bean(name = "supervisorChatClientBuilder")
     ChatClient.Builder supervisorBuilder(ChatModel chatModel) {
         return ChatClient.builder(chatModel);
