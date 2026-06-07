@@ -124,12 +124,12 @@ class FinanceAgent:
 
     async def chat_stream(
         self, user_id: str, message: str
-    ) -> AsyncIterator[str]:
-        """流式对话，逐 token yield。"""
+    ) -> AsyncIterator[dict]:
+        """流式对话，逐 token yield dict —— 与 Java 栈三通道 (data/thinking/error) 对齐。"""
         # 第一层防护: Prompt Injection 检测
         if is_prompt_injection(message):
             logger.warning("InputGuardrail 拦截(stream): userId=%s", user_id)
-            yield REJECTION_REPLY
+            yield {"data": REJECTION_REPLY}
             return
 
         memory = MemoryManager(user_id)
@@ -148,15 +148,18 @@ class FinanceAgent:
                     {"messages": messages}, version="v2"
                 ):
                     kind = event.get("event", "")
-                    if kind == "on_chat_model_stream":
+                    if kind == "on_tool_start":
+                        tool_name = event.get("name", "unknown")
+                        yield {"event": "thinking", "data": f"正在调用 {tool_name}..."}
+                    elif kind == "on_chat_model_stream":
                         chunk = event["data"]["chunk"]
                         if hasattr(chunk, "content") and chunk.content:
                             token = str(chunk.content)
                             full_response.append(token)
-                            yield token
+                            yield {"data": token}
         except asyncio.TimeoutError:
             logger.warning("流式超时: userId=%s", user_id)
-            yield "\n\n⚠️ AI 响应超时"
+            yield {"event": "error", "data": "AI 响应超时，请简化问题或稍后重试"}
 
         memory.append("user", message)
         full_text = "".join(full_response)

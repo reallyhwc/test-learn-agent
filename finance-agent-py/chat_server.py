@@ -169,8 +169,11 @@ async def chat_stream(request: ChatRequest):
 
     async def event_generator():
         try:
-            async for token in agent.chat_stream(user_id, message):
-                yield {"data": token}
+            async for event in agent.chat_stream(user_id, message):
+                if isinstance(event, dict):
+                    yield event
+                else:
+                    yield {"data": event}
         except Exception as e:
             logger.error("流式错误: %s", e)
             yield {"event": "error", "data": "AI 服务响应异常，请稍后重试"}
