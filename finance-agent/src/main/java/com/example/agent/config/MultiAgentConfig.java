@@ -10,12 +10,14 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Multi-Agent 配置：创建 3 个独立 ChatClient Builder Bean，各自绑定不同的 MCP 工具子集。
+ * Multi-Agent 配置：创建 4 个独立 ChatClient Builder Bean，各自绑定不同的 MCP 工具子集。
  *
  * <p>ToolCallbackProvider 列表由 Spring AI MCP auto-configuration 注入，
  * 包含全部 5 个 MCP 工具。各 Bean 通过名称过滤绑定子集。
  *
- * <p>使用 ChatClient.builder() 独立创建，不依赖自动配置的 ChatClient.Builder Bean。
+ * <p>LlmAuditAdvisor 通过 defaultAdvisors 注入 chatClient/bookkeeper/analyst 三个 Builder，
+ * 从 per-request .param() 设置的 context 中读取 traceId/agentName 等元数据。
+ * supervisorChatClientBuilder 不注入（SupervisorAgent 手动 writeRecord）。
  */
 @Configuration
 public class MultiAgentConfig {
@@ -28,19 +30,23 @@ public class MultiAgentConfig {
     static final List<String> ANALYST_TOOLS = List.of(
             "list_transactions", "summarize_transactions");
 
+    private final com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor;
+
+    public MultiAgentConfig(com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor) {
+        this.llmAuditAdvisor = llmAuditAdvisor;
+    }
+
     /**
      * 默认 ChatClient.Builder（@Primary）— 不预绑定工具，供单 Agent 模式使用。
      * ChatController 构造函数会自行调用 defaultToolCallbacks() 绑定全量工具。
      * 同时保证 Spring 注入 ChatClient.Builder 时能匹配到唯一的 bean。
-     *
-     * <p>注意：LlmAuditAdvisor 不在 defaultAdvisors 中注册，而是由 ChatController
-     * 在每个请求的 .advisors() 链中统一注入，避免双重注册导致重复审计记录。
      */
     @Bean
     @org.springframework.context.annotation.Primary
     ChatClient.Builder chatClientBuilder(
             org.springframework.ai.chat.model.ChatModel chatModel) {
-        return ChatClient.builder(chatModel);
+        return ChatClient.builder(chatModel)
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     @Bean(name = "bookkeeperChatClientBuilder")
@@ -49,7 +55,8 @@ public class MultiAgentConfig {
             List<ToolCallbackProvider> toolProviders) {
         var filtered = filterTools(toolProviders, BOOKKEEPER_TOOLS);
         return ChatClient.builder(chatModel)
-                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]))
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     @Bean(name = "analystChatClientBuilder")
@@ -58,13 +65,15 @@ public class MultiAgentConfig {
             List<ToolCallbackProvider> toolProviders) {
         var filtered = filterTools(toolProviders, ANALYST_TOOLS);
         return ChatClient.builder(chatModel)
-                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]))
+                .defaultAdvisors(llmAuditAdvisor);
     }
 
     @Bean(name = "supervisorChatClientBuilder")
     ChatClient.Builder supervisorChatClientBuilder(
             org.springframework.ai.chat.model.ChatModel chatModel) {
-        // Supervisor 不绑定任何 MCP 工具，只做文本分类
+        // Supervisor 不绑定任何 MCP 工具，只做文本分类。
+        // 不注入 LlmAuditAdvisor — SupervisorAgent.classify() 手动 writeRecord。
         return ChatClient.builder(chatModel);
     }
 

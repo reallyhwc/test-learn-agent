@@ -19,6 +19,7 @@ import org.springframework.core.Ordered;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -54,9 +55,9 @@ class LlmAuditAdvisorTest {
     @Test
     void shouldNotWriteWhenDisabled() {
         var disabledAdvisor = new LlmAuditAdvisor(logFile.toString(), false);
-        var request = mock(ChatClientRequest.class);
+        var request = mockRequest(List.of(), new java.util.HashMap<>());
         var chain = mock(AdvisorChain.class);
-        var response = mock(ChatClientResponse.class);
+        var response = mockResponse(Map.of(), null);
 
         disabledAdvisor.before(request, chain);
         disabledAdvisor.after(response, chain);
@@ -66,15 +67,16 @@ class LlmAuditAdvisorTest {
 
     @Test
     void shouldWriteErrorRecordWhenChatResponseIsNull() throws Exception {
-        var request = mock(ChatClientRequest.class);
+        Map<String, Object> ctx = new java.util.HashMap<>();
+        var request = mockRequest(List.of(), ctx);
         var chain = mock(AdvisorChain.class);
 
-        var response = mockResponse(Map.of(
-                LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-null",
-                LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "supervisor",
-                LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "classify",
-                LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1"));
-        when(response.chatResponse()).thenReturn(null);
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-null");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "supervisor");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "classify");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1");
+
+        var response = mockResponse(ctx, null);  // chatResponse = null
 
         advisor.before(request, chain);
         advisor.after(response, chain);
@@ -89,10 +91,16 @@ class LlmAuditAdvisorTest {
 
     @Test
     void shouldWriteCompleteRecordForSuccessfulCall() throws Exception {
+        Map<String, Object> ctx = new java.util.HashMap<>();
         var request = mockRequest(List.of(
                 mockMessage(MessageType.SYSTEM, "You are a helpful assistant."),
-                mockMessage(MessageType.USER, "What is my balance?")));
+                mockMessage(MessageType.USER, "What is my balance?")), ctx);
         var chain = mock(AdvisorChain.class);
+
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-001");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "bookkeeper");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1");
 
         var assistantMsg = mock(AssistantMessage.class);
         when(assistantMsg.getText()).thenReturn("Your balance is ¥1,234.56");
@@ -118,12 +126,7 @@ class LlmAuditAdvisorTest {
                 .metadata(metadata)
                 .build();
 
-        var response = mockResponse(Map.of(
-                LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-001",
-                LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "bookkeeper",
-                LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute",
-                LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1"));
-        when(response.chatResponse()).thenReturn(chatResponse);
+        var response = mockResponse(ctx, chatResponse);
 
         advisor.before(request, chain);
         Thread.sleep(5);
@@ -158,9 +161,15 @@ class LlmAuditAdvisorTest {
 
     @Test
     void shouldWriteRecordWithToolCalls() throws Exception {
+        Map<String, Object> ctx = new java.util.HashMap<>();
         var request = mockRequest(List.of(
-                mockMessage(MessageType.USER, "Add lunch expense 30 yuan")));
+                mockMessage(MessageType.USER, "Add lunch expense 30 yuan")), ctx);
         var chain = mock(AdvisorChain.class);
+
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-tc");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "bookkeeper");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute");
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1");
 
         var toolCall = mock(AssistantMessage.ToolCall.class);
         when(toolCall.name()).thenReturn("add_transaction");
@@ -180,12 +189,7 @@ class LlmAuditAdvisorTest {
                 .metadata(ChatResponseMetadata.builder().model("deepseek-chat").build())
                 .build();
 
-        var response = mockResponse(Map.of(
-                LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-tc",
-                LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "bookkeeper",
-                LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute",
-                LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1"));
-        when(response.chatResponse()).thenReturn(chatResponse);
+        var response = mockResponse(ctx, chatResponse);
 
         advisor.before(request, chain);
         advisor.after(response, chain);
@@ -202,16 +206,17 @@ class LlmAuditAdvisorTest {
 
     @Test
     void shouldUseDefaultValuesWhenContextMissing() throws Exception {
-        var request = mockRequest(List.of());
+        Map<String, Object> ctx = new java.util.HashMap<>();
+        var request = mockRequest(List.of(), ctx);
         var chain = mock(AdvisorChain.class);
 
+        // 不设置任何 context param
         var chatResponse = ChatResponse.builder()
                 .generations(List.of())
                 .metadata(ChatResponseMetadata.builder().build())
                 .build();
 
-        var response = mockResponse(Map.of());  // empty context
-        when(response.chatResponse()).thenReturn(chatResponse);
+        var response = mockResponse(ctx, chatResponse);
 
         advisor.before(request, chain);
         advisor.after(response, chain);
@@ -221,6 +226,21 @@ class LlmAuditAdvisorTest {
         assertThat(record.get("traceId").asText()).isEqualTo("unknown");
         assertThat(record.get("agentName").asText()).isEqualTo("unknown");
         assertThat(record.get("callType").asText()).isEqualTo("execute");
+    }
+
+    @Test
+    void shouldSkipWhenStartNanosNotInContext() {
+        // after() 在 context 中无 CTX_START_NANOS 时应跳过 (模拟跨线程 before() 未执行)
+        Map<String, Object> ctx = new HashMap<>();
+        ctx.put(LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-001");
+
+        var response = mockResponse(ctx, null);
+        var chain = mock(AdvisorChain.class);
+
+        ChatClientResponse result = advisor.after(response, chain);
+
+        assertThat(result).isSameAs(response);
+        assertThat(Files.exists(logFile)).isFalse();
     }
 
     @Test
@@ -239,24 +259,6 @@ class LlmAuditAdvisorTest {
     }
 
     @Test
-    void shouldSkipWhenStartTimeNanosIsNull() {
-        // after() 在 startTimeNanos 为 null (before() 未被调用或已被消费) 时应跳过
-        var response = mockResponse(Map.of(
-                LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-001",
-                LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "bookkeeper",
-                LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute",
-                LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1"));
-        var chain = mock(AdvisorChain.class);
-
-        // 不调用 before()，直接调用 after()
-        ChatClientResponse result = advisor.after(response, chain);
-
-        // 应跳过并返回原 response，不写文件
-        assertThat(result).isSameAs(response);
-        assertThat(Files.exists(logFile)).isFalse();
-    }
-
-    @Test
     void writeRecordShouldNotWriteWhenDisabled() {
         var disabledAdvisor = new LlmAuditAdvisor(logFile.toString(), false);
         var record = LlmCallRecord.error("t1", "supervisor", "classify", "u1", 100L, null);
@@ -266,18 +268,20 @@ class LlmAuditAdvisorTest {
 
     // --- helpers ---
 
-    private ChatClientResponse mockResponse(Map<String, Object> context) {
+    private ChatClientResponse mockResponse(Map<String, Object> context, ChatResponse chatResponse) {
         var response = mock(ChatClientResponse.class);
         when(response.context()).thenReturn(context);
+        when(response.chatResponse()).thenReturn(chatResponse);
         return response;
     }
 
-    private ChatClientRequest mockRequest(List<Message> messages) {
+    private ChatClientRequest mockRequest(List<Message> messages, Map<String, Object> context) {
         var prompt = mock(org.springframework.ai.chat.prompt.Prompt.class);
         when(prompt.getInstructions()).thenReturn(messages);
 
         var request = mock(ChatClientRequest.class);
         when(request.prompt()).thenReturn(prompt);
+        when(request.context()).thenReturn(context);
         return request;
     }
 

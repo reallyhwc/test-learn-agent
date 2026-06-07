@@ -36,6 +36,10 @@ import java.util.Map;
  *   <li>advisor 链中通过 spec.param() 传入 traceId/agentName/callType/userId</li>
  *   <li>SupervisorAgent.classify() 通过 writeRecord() 直接写入</li>
  * </ul>
+ *
+ * <h3>跨线程数据传递</h3>
+ * <p>流式场景下 before() 和 after() 在不同线程执行，ThreadLocal 不可靠。
+ * 改用 {@code request.context()} / {@code response.context()}（Spring AI 保证跨线程共享）。
  */
 @Slf4j
 @Component
@@ -46,26 +50,18 @@ public class LlmAuditAdvisor implements BaseAdvisor {
     public static final String ADVISOR_PARAM_CALL_TYPE = "audit_callType";
     public static final String ADVISOR_PARAM_USER_ID = "audit_userId";
 
+    /** request.context() 中存储捕获数据的 key 前缀，避免与用户 param 冲突 */
+    private static final String CTX_START_NANOS = "__audit_startNanos";
+    private static final String CTX_SYSTEM_PROMPT = "__audit_systemPrompt";
+    private static final String CTX_USER_MESSAGE = "__audit_userMessage";
+    private static final String CTX_MESSAGES = "__audit_messages";
+    private static final String CTX_TOOLS = "__audit_tools";
+
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .registerModule(new JavaTimeModule());
 
     private final Path logFilePath;
     private final boolean enabled;
-
-    /** 跨 before/after 传递：开始时间（纳秒） */
-    private final ThreadLocal<Long> startTimeNanos = new ThreadLocal<>();
-
-    /** 跨 before/after 传递：请求消息列表 */
-    private final ThreadLocal<List<Map<String, String>>> capturedMessages = new ThreadLocal<>();
-
-    /** 跨 before/after 传递：系统提示词 */
-    private final ThreadLocal<String> capturedSystemPrompt = new ThreadLocal<>();
-
-    /** 跨 before/after 传递：用户消息 */
-    private final ThreadLocal<String> capturedUserMessage = new ThreadLocal<>();
-
-    /** 跨 before/after 传递：可用工具名列表 */
-    private final ThreadLocal<List<String>> capturedTools = new ThreadLocal<>();
 
     public LlmAuditAdvisor(
             @Value("${finance.audit.log-path:logs/llm-audit/llm-calls.jsonl}") String logPath,
@@ -97,9 +93,11 @@ public class LlmAuditAdvisor implements BaseAdvisor {
         if (!enabled) {
             return request;
         }
-        startTimeNanos.set(System.nanoTime());
 
-        // 捕获请求消息（用于 after() 组装完整记录）
+        Map<String, Object> ctx = request.context();
+        ctx.put(CTX_START_NANOS, System.nanoTime());
+
+        // 捕获请求消息
         if (request.prompt() != null && request.prompt().getInstructions() != null) {
             List<Message> messages = request.prompt().getInstructions();
             List<Map<String, String>> msgList = new ArrayList<>();
@@ -116,28 +114,35 @@ public class LlmAuditAdvisor implements BaseAdvisor {
                     userMsg = content;
                 }
             }
-            capturedMessages.set(msgList);
-            capturedSystemPrompt.set(sysPrompt);
-            capturedUserMessage.set(userMsg);
+            ctx.put(CTX_MESSAGES, msgList);
+            if (sysPrompt != null) {
+                ctx.put(CTX_SYSTEM_PROMPT, sysPrompt);
+            }
+            if (userMsg != null) {
+                ctx.put(CTX_USER_MESSAGE, userMsg);
+            }
         }
 
         return request;
     }
 
     @Override
+    @SuppressWarnings("unchecked")
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
         if (!enabled) {
             return response;
         }
 
-        // 防御: before() 未被调用或已被其他 after() 消费时跳过
-        if (startTimeNanos.get() == null) {
-            log.warn("LlmAuditAdvisor.after() 跳过：startTimeNanos 为 null（可能双重注册或 before() 未执行）");
+        Map<String, Object> ctx = response.context();
+
+        // 防御: before() 未被调用或 context 被意外清理
+        Long startNanos = (Long) ctx.get(CTX_START_NANOS);
+        if (startNanos == null) {
+            log.debug("LlmAuditAdvisor.after() 跳过：context 中无 startNanos");
             return response;
         }
 
-        long durationMs = computeDurationMs();
-        Map<String, Object> ctx = response.context();
+        long durationMs = (System.nanoTime() - startNanos) / 1_000_000;
 
         String traceId = (String) ctx.getOrDefault(ADVISOR_PARAM_TRACE_ID, "unknown");
         String agentName = (String) ctx.getOrDefault(ADVISOR_PARAM_AGENT_NAME, "unknown");
@@ -152,11 +157,13 @@ public class LlmAuditAdvisor implements BaseAdvisor {
         }
 
         try {
+            String systemPrompt = (String) ctx.get(CTX_SYSTEM_PROMPT);
+            String userMessage = (String) ctx.get(CTX_USER_MESSAGE);
+            List<Map<String, String>> messages = (List<Map<String, String>>) ctx.get(CTX_MESSAGES);
+            List<String> tools = (List<String>) ctx.get(CTX_TOOLS);
+
             LlmCallRecord.RequestInfo requestInfo = new LlmCallRecord.RequestInfo(
-                    capturedSystemPrompt.get(),
-                    capturedUserMessage.get(),
-                    capturedMessages.get(),
-                    capturedTools.get());
+                    systemPrompt, userMessage, messages, tools);
 
             LlmCallRecord.ResponseInfo responseInfo = buildResponseInfo(chatResponse);
             LlmCallRecord.TokenUsage tokenUsage = buildTokenUsage(chatResponse);
@@ -171,15 +178,13 @@ public class LlmAuditAdvisor implements BaseAdvisor {
             log.debug("构建审计记录失败: {}", e.getMessage());
             writeRecord(LlmCallRecord.error(traceId, agentName, callType, userId,
                     durationMs, "record build error: " + e.getMessage()));
-        } finally {
-            clearThreadLocals();
         }
 
         return response;
     }
 
     /**
-     * 直接写入审计记录 — 供 SuperisorAgent.classify() 等不走 advisor 链的调用路径使用。
+     * 直接写入审计记录 — 供 SupervisorAgent.classify() 等不走 advisor 链的调用路径使用。
      */
     public void writeRecord(LlmCallRecord record) {
         if (!enabled) {
@@ -192,15 +197,6 @@ public class LlmAuditAdvisor implements BaseAdvisor {
         } catch (IOException e) {
             log.debug("写入审计记录失败: {}", e.getMessage());
         }
-    }
-
-    private long computeDurationMs() {
-        Long start = startTimeNanos.get();
-        startTimeNanos.remove();
-        if (start == null) {
-            return 0;
-        }
-        return (System.nanoTime() - start) / 1_000_000;
     }
 
     private LlmCallRecord.ResponseInfo buildResponseInfo(ChatResponse chatResponse) {
@@ -244,13 +240,5 @@ public class LlmAuditAdvisor implements BaseAdvisor {
             return chatResponse.getMetadata().getModel();
         }
         return null;
-    }
-
-    private void clearThreadLocals() {
-        startTimeNanos.remove();
-        capturedMessages.remove();
-        capturedSystemPrompt.remove();
-        capturedUserMessage.remove();
-        capturedTools.remove();
     }
 }

@@ -167,7 +167,7 @@ public class ChatController {
                                     .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                                     .advisors(inputGuardrailAdvisor, advisor,
                                             toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                            llmInteractionLogger, llmAuditAdvisor))
+                                            llmInteractionLogger))
                             .call()
                             .chatResponse()
             ).get(SYNC_CHAT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -257,7 +257,7 @@ public class ChatController {
                             .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
                                     toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                    llmInteractionLogger, llmAuditAdvisor))
+                                    llmInteractionLogger))
                     .stream()
                     .chatResponse()
                     .subscribe(
@@ -433,7 +433,7 @@ public class ChatController {
                             .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
                                     toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                    llmInteractionLogger, llmAuditAdvisor))
+                                    llmInteractionLogger))
                     .stream()
                     .chatResponse()
                     .subscribe(
