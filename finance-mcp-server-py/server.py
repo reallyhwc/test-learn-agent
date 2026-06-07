@@ -11,6 +11,7 @@ import re
 from typing import Any
 
 import httpx
+from mask_utils import mask_amount, mask_user_id
 from mcp.server.fastmcp import FastMCP
 
 logging.basicConfig(level=logging.INFO)
@@ -53,7 +54,7 @@ async def query_balance(user_id: str, account_id: int) -> Any:
         user_id = validate_user_id(user_id)
     except ValueError as e:
         return str(e)
-    logger.info("query_balance: userId=%s, accountId=%s", user_id, account_id)
+    logger.info("query_balance: userId=%s, accountId=%s", mask_user_id(user_id), account_id)
     try:
         client = _get_http_client()
         resp = await client.get(f"/api/accounts/{account_id}/balance")
@@ -76,7 +77,7 @@ async def list_transactions(user_id: str, filters: str) -> Any:
         user_id = validate_user_id(user_id)
     except ValueError as e:
         return str(e)
-    logger.info("list_transactions: userId=%s, filters=%s", user_id, filters)
+    logger.info("list_transactions: userId=%s, filters=%s", mask_user_id(user_id), filters)
 
     filter_map = _parse_filters(filters)
     limit = int(filter_map.pop("limit", DEFAULT_PAGE_SIZE))
@@ -117,7 +118,7 @@ async def summarize_transactions(user_id: str, filters: str) -> Any:
         user_id = validate_user_id(user_id)
     except ValueError as e:
         return str(e)
-    logger.info("summarize_transactions: userId=%s, filters=%s", user_id, filters)
+    logger.info("summarize_transactions: userId=%s, filters=%s", mask_user_id(user_id), filters)
 
     filter_map = _parse_filters(filters)
     params: dict[str, Any] = {"userId": user_id}
@@ -176,7 +177,7 @@ async def add_transaction(
 
     logger.info(
         "add_transaction: userId=%s, accountId=%s, type=%s, amount=%s, category=%s/%s",
-        user_id, account_id, type_upper, amount, category, sub_category,
+        mask_user_id(user_id), account_id, type_upper, mask_amount(amount), category, sub_category,
     )
 
     from datetime import date
@@ -212,7 +213,7 @@ async def list_accounts(user_id: str) -> Any:
         user_id = validate_user_id(user_id)
     except ValueError as e:
         return str(e)
-    logger.info("list_accounts: userId=%s", user_id)
+    logger.info("list_accounts: userId=%s", mask_user_id(user_id))
     try:
         client = _get_http_client()
         resp = await client.get("/api/accounts", params={"userId": user_id})

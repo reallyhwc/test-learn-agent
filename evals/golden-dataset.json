@@ -176,7 +176,7 @@
       "context": { "userId": "default" },
       "expectations": {
         "toolCalled": "add_transaction",
-        "toolParamsContain": { "userId": "default" },
+        "toolParamsContain": { "userId": "default", "amount": "35" },
         "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功", "35", "打车"]
       }
     }
