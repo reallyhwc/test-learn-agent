@@ -592,7 +592,7 @@ AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 ## 测试体系
 
 ```
-全栈测试覆盖: 后端 ~46 用例 + 前端 109 用例 + MCP ~16 用例 + Agent Java 105 用例 + Python 76 用例 ≈ 352 用例
+全栈测试覆盖: 后端 ~46 用例 + 前端 131 用例 + MCP ~16 用例 + Agent Java 111 用例 + Python 73 用例 ≈ 377 用例
 ```
 
 | 层 | 框架 | 覆盖范围 |
@@ -622,10 +622,10 @@ cd finance-frontend && npx vitest run
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
 
-# Java Agent + Multi-Agent + Guardrails (105 用例)
+# Java Agent + Multi-Agent + Guardrails (111 用例)
 cd finance-agent && ./mvnw test
 
-# Python Agent + Multi-Agent + Guardrails (76 用例)
+# Python Agent + Multi-Agent + Guardrails (73 用例)
 cd finance-agent-py && python -m pytest -v
 
 # Eval 评估（需 LLM_API_KEY + 启动 backend/mcp-server）
@@ -680,7 +680,7 @@ graph LR
 ✅ Evals 评估体系 (19 条 Golden Dataset)
 ✅ Human-in-the-Loop (写操作确认)
 ✅ Multi-Agent 协作 (Supervisor + Bookkeeper + Analyst)
-✅ 全栈测试体系 (~352 用例)
+✅ 全栈测试体系 (~377 用例)
 ✅ AI Coding Harness
 ✅ Java/Python 双栈切换
 ```

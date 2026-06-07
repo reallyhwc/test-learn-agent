@@ -35,7 +35,7 @@
 ✅ Evals 评估体系
 ✅ Human-in-the-Loop
 ✅ Multi-Agent 协作
-✅ 全栈测试体系 (~352 用例)
+✅ 全栈测试体系 (~377 用例)
 ✅ AI Coding Harness
 ✅ Java/Python 双栈切换
 ```

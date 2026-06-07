@@ -442,7 +442,7 @@ All queries go through the MCP tool chain. The AI never fabricates data — the 
 ## Test Suite
 
 ```
-Full-stack coverage: Backend ~46 + Frontend 109 + MCP ~16 + Agent Java 105 + Python 76 ≈ 352 tests
+Full-stack coverage: Backend ~46 + Frontend 131 + MCP ~16 + Agent Java 111 + Python 73 ≈ 377 tests
 ```
 
 | Layer | Framework | Coverage |
@@ -472,10 +472,10 @@ cd finance-frontend && npx vitest run
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
 
-# Java Agent + Multi-Agent + Guardrails (105 tests)
+# Java Agent + Multi-Agent + Guardrails (111 tests)
 cd finance-agent && ./mvnw test
 
-# Python Agent + Multi-Agent + Guardrails (76 tests)
+# Python Agent + Multi-Agent + Guardrails (73 tests)
 cd finance-agent-py && python -m pytest -v
 
 # Eval (requires LLM_API_KEY + backend/mcp-server running)
