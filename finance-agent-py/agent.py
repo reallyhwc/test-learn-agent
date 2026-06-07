@@ -172,3 +172,151 @@ class FinanceAgent:
             logger.warning("OutputGuardrail(stream): 幻觉检测触发 userId=%s", user_id)
 
         memory.append("assistant", full_text)
+
+
+class MultiAgentFinanceAgent:
+    """Multi-Agent 版 FinanceAgent — Supervisor + Bookkeeper + Analyst StateGraph。"""
+
+    def __init__(self, mcp_sse_url: str = "http://localhost:8083/sse"):
+        self.mcp_sse_url = mcp_sse_url
+        self._graph = None
+        self._supervisor_llm = None
+        self._bookkeeper_agent = None
+        self._analyst_agent = None
+        self._session = None
+        self._sse_context = None
+        self._initialized = False
+
+    async def initialize(self):
+        """初始化 3 组 LLM + MCP 连接，构建 StateGraph。"""
+        from langchain_mcp_adapters.tools import load_mcp_tools
+        from langchain_openai import ChatOpenAI
+        from langgraph.prebuilt import create_react_agent
+        from mcp import ClientSession
+        from mcp.client.sse import sse_client
+
+        from .multiagent.graph_builder import build_multi_agent_graph
+
+        llm_config = get_llm_config()
+        base_url = llm_config["base_url"].rstrip("/")
+        if not base_url.endswith("/v1"):
+            base_url += "/v1"
+
+        # --- 连接 MCP Server ---
+        self._sse_context = sse_client(self.mcp_sse_url)
+        read, write = await self._sse_context.__aenter__()
+        self._session = ClientSession(read, write)
+        await self._session.__aenter__()
+        await self._session.initialize()
+        all_tools = await load_mcp_tools(self._session)
+
+        # --- Supervisor LLM（不绑工具，只做分类）---
+        self._supervisor_llm = ChatOpenAI(
+            model=llm_config["model"],
+            api_key=llm_config["api_key"],
+            base_url=base_url,
+            temperature=0.0,
+        )
+
+        # --- Bookkeeper Agent（记账工具子集）---
+        bookkeeper_tools = [t for t in all_tools
+                            if t.name in ("add_transaction", "list_accounts", "query_balance")]
+        bookkeeper_llm = ChatOpenAI(
+            model=llm_config["model"],
+            api_key=llm_config["api_key"],
+            base_url=base_url,
+            temperature=0.1,
+        )
+        self._bookkeeper_agent = create_react_agent(bookkeeper_llm, bookkeeper_tools)
+
+        # --- Analyst Agent（分析工具子集）---
+        analyst_tools = [t for t in all_tools
+                         if t.name in ("list_transactions", "summarize_transactions")]
+        analyst_llm = ChatOpenAI(
+            model=llm_config["model"],
+            api_key=llm_config["api_key"],
+            base_url=base_url,
+            temperature=0.1,
+        )
+        self._analyst_agent = create_react_agent(analyst_llm, analyst_tools)
+
+        # --- 构建 StateGraph ---
+        self._graph = build_multi_agent_graph(
+            self._supervisor_llm, self._bookkeeper_agent, self._analyst_agent)
+
+        self._initialized = True
+        logger.info("Multi-Agent StateGraph 初始化完成")
+
+    async def chat(self, user_id: str, message: str) -> str:
+        """同步对话。"""
+        from .multiagent.state import MultiAgentState
+
+        if is_prompt_injection(message):
+            return REJECTION_REPLY
+
+        initial_state = MultiAgentState.create(
+            messages=[{"role": "user", "content": message}])
+
+        try:
+            result = await asyncio.wait_for(
+                self._graph.ainvoke(initial_state),
+                timeout=60,
+            )
+        except asyncio.TimeoutError:
+            return "AI 响应超时，请简化问题或稍后重试"
+
+        messages = result.get("messages", [])
+        for m in reversed(messages):
+            if isinstance(m, dict) and m.get("role") == "assistant" and m.get("content"):
+                return str(m.get("content", ""))
+        return "无法处理该请求"
+
+    async def chat_stream(self, user_id: str, message: str):
+        """流式对话 — 逐节点 yield SSE 事件 dict。"""
+        from .multiagent.state import MultiAgentState
+
+        if is_prompt_injection(message):
+            yield {"data": REJECTION_REPLY}
+            return
+
+        initial_state = MultiAgentState.create(
+            messages=[{"role": "user", "content": message}])
+
+        try:
+            async with asyncio.timeout(120):
+                async for event in self._graph.astream_events(
+                    initial_state, version="v2"
+                ):
+                    kind = event.get("event", "")
+                    node_name = event.get("name", "")
+
+                    if kind == "on_chain_start":
+                        if node_name in ("bookkeeper", "analyst"):
+                            label = "记账员" if node_name == "bookkeeper" else "分析师"
+                            yield {"event": "thinking",
+                                   "data": f"正在由{label}处理..."}
+
+                    elif kind == "on_chat_model_stream":
+                        chunk = event["data"]["chunk"]
+                        if hasattr(chunk, "content") and chunk.content:
+                            yield {"data": str(chunk.content)}
+
+        except asyncio.TimeoutError:
+            yield {"event": "error", "data": "AI 响应超时，请简化问题或稍后重试"}
+
+    @property
+    def is_initialized(self) -> bool:
+        return self._initialized
+
+    async def close(self):
+        """关闭 MCP 连接。"""
+        if self._session:
+            try:
+                await self._session.__aexit__(None, None, None)
+            except Exception:
+                pass
+        if self._sse_context:
+            try:
+                await self._sse_context.__aexit__(None, None, None)
+            except Exception:
+                pass

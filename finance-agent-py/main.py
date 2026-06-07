@@ -28,6 +28,17 @@ async def main() -> None:
     try:
         await agent.initialize()
         chat_server.agent = agent
+
+        # 初始化 Multi-Agent（可选，MCP Server 不可用时跳过）
+        from agent import MultiAgentFinanceAgent
+        multi_agent = MultiAgentFinanceAgent(mcp_sse_url=mcp_url)
+        try:
+            await multi_agent.initialize()
+            chat_server.multi_agent = multi_agent
+            logger.info("Multi-Agent 初始化完成")
+        except Exception as e:
+            logger.warning("Multi-Agent 初始化失败（端点将返回 503）: %s", e)
+
         logger.info("Agent 初始化完成，启动 HTTP 服务 (port=%d)", agent_port)
 
         uvi_config = uvicorn.Config(
@@ -38,6 +49,8 @@ async def main() -> None:
     finally:
         logger.info("正在关闭 Agent 连接...")
         await agent.close()
+        if chat_server.multi_agent is not None:
+            await chat_server.multi_agent.close()
         logger.info("Agent 连接已关闭")
 
 

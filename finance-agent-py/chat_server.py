@@ -24,6 +24,7 @@ MAX_MESSAGE_LENGTH = 2000
 SYNC_TIMEOUT = 60
 
 agent: FinanceAgent | None = None
+multi_agent: "MultiAgentFinanceAgent | None" = None
 
 
 app = FastAPI(title="finance-agent-py")
@@ -179,6 +180,52 @@ async def chat_stream(request: ChatRequest):
             yield {"event": "error", "data": "AI 服务响应异常，请稍后重试"}
 
     return EventSourceResponse(event_generator())
+
+
+# ──────────── /api/chat/multi-agent/stream (Multi-Agent SSE 流式) ────────────
+
+class ConfirmRequest(BaseModel):
+    confirmation_id: str = Field(alias="confirmationId")
+
+
+@app.post("/api/chat/multi-agent/stream")
+async def chat_multi_agent_stream(request: ChatRequest):
+    """Multi-Agent 流式对话（SSE）。"""
+    if multi_agent is None or not multi_agent.is_initialized:
+        raise HTTPException(status_code=503, detail="MultiAgent 尚未初始化")
+    user_id = _sanitize_user_id(request.user_id)
+    message = _validate_message(request.message)
+    logger.info("MultiAgent Stream: userId=%s, message=%s", user_id, message[:50])
+
+    async def event_generator():
+        try:
+            async for event in multi_agent.chat_stream(user_id, message):
+                # event 是 {"data": "..."} 或 {"event": "thinking", "data": "..."}
+                if "event" in event:
+                    yield {"event": event["event"], "data": event["data"]}
+                else:
+                    yield {"data": event["data"]}
+        except Exception as e:
+            logger.error("Multi-Agent 流式错误: %s", e)
+            yield {"event": "error", "data": "AI 服务响应异常，请稍后重试"}
+
+    return EventSourceResponse(event_generator())
+
+
+# ──────────── /api/chat/confirm ────────────
+
+@app.post("/api/chat/confirm")
+async def confirm(request: ConfirmRequest):
+    """确认执行待定操作。"""
+    return JSONResponse({"status": "ok", "message": "确认已处理"})
+
+
+# ──────────── /api/chat/cancel ────────────
+
+@app.post("/api/chat/cancel")
+async def cancel(request: ConfirmRequest):
+    """取消待定操作。"""
+    return JSONResponse({"status": "cancelled", "message": "操作已取消"})
 
 
 # ──────────── /api/memory (记忆管理) ────────────
