@@ -130,6 +130,12 @@ public class LlmAuditAdvisor implements BaseAdvisor {
             return response;
         }
 
+        // 防御: before() 未被调用或已被其他 after() 消费时跳过
+        if (startTimeNanos.get() == null) {
+            log.warn("LlmAuditAdvisor.after() 跳过：startTimeNanos 为 null（可能双重注册或 before() 未执行）");
+            return response;
+        }
+
         long durationMs = computeDurationMs();
         Map<String, Object> ctx = response.context();
 

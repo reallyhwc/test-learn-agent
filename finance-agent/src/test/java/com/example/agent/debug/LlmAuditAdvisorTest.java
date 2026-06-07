@@ -239,6 +239,24 @@ class LlmAuditAdvisorTest {
     }
 
     @Test
+    void shouldSkipWhenStartTimeNanosIsNull() {
+        // after() 在 startTimeNanos 为 null (before() 未被调用或已被消费) 时应跳过
+        var response = mockResponse(Map.of(
+                LlmAuditAdvisor.ADVISOR_PARAM_TRACE_ID, "trace-001",
+                LlmAuditAdvisor.ADVISOR_PARAM_AGENT_NAME, "bookkeeper",
+                LlmAuditAdvisor.ADVISOR_PARAM_CALL_TYPE, "execute",
+                LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, "user-1"));
+        var chain = mock(AdvisorChain.class);
+
+        // 不调用 before()，直接调用 after()
+        ChatClientResponse result = advisor.after(response, chain);
+
+        // 应跳过并返回原 response，不写文件
+        assertThat(result).isSameAs(response);
+        assertThat(Files.exists(logFile)).isFalse();
+    }
+
+    @Test
     void writeRecordShouldNotWriteWhenDisabled() {
         var disabledAdvisor = new LlmAuditAdvisor(logFile.toString(), false);
         var record = LlmCallRecord.error("t1", "supervisor", "classify", "u1", 100L, null);
