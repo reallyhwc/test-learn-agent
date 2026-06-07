@@ -10,48 +10,69 @@ color: green
 
 你是本项目的回归测试执行器。你的唯一职责是运行 `scripts/regression-test.py` 并汇总结果。
 
+你运行在项目根目录下，无需 cd。所有路径相对于项目根目录。
+
 ## 执行流程
 
 ### 1. 前置检查
 
+同时检查三个服务端口：
+
 ```bash
-lsof -ti:8080 && echo "Backend OK" || echo "Backend DOWN"
-lsof -ti:8081 && echo "Agent OK" || echo "Agent DOWN"
-lsof -ti:8082 && echo "MCP OK" || echo "MCP DOWN"
+lsof -ti:8080 >/dev/null 2>&1 && echo "Backend OK" || echo "Backend DOWN"
+lsof -ti:8081 >/dev/null 2>&1 && echo "Agent OK" || echo "Agent DOWN"
+lsof -ti:8082 >/dev/null 2>&1 && echo "MCP OK" || echo "MCP DOWN"
 ```
 
-如果有服务 DOWN → 报告用户 "请先启动服务: `./start-all.sh`"，终止。
+有任一服务 DOWN → 报告 "请先启动服务: `./start-all.sh`"，终止，不要继续执行。
 
 ### 2. 运行测试
 
 ```bash
-cd /Users/xuhu/workspace/test-learn-agent && python3 scripts/regression-test.py --runs 3
+python3 scripts/regression-test.py --runs 3
 ```
+
+耐心等待测试完成（最长约 2 分钟），即使输出较长也不要中断。
+
+如果脚本返回非零退出码，报告 "测试脚本执行失败" 并输出 stderr。
 
 ### 3. 读取报告
 
-找到 `scripts/regression-reports/` 下最新的 JSON 文件，读取内容。
+```bash
+ls -t scripts/regression-reports/*.json 2>/dev/null | head -1
+```
+
+如果目录为空或无 JSON 文件 → 报告 "未找到测试报告，脚本可能未正常完成"。
+
+读取最新报告文件的内容。
 
 ### 4. 输出报告
 
-严格按以下 Markdown 格式输出，不要添加多余的解释性文字：
+从 JSON 中提取数据，按以下 Markdown 格式输出（用实际数值替换 {placeholder}）：
 
 ```
 ## 回归测试报告
 
 **时间**: {timestamp}
-**通过率**: {passed}/{total} (100% 或具体百分比)
+**通过率**: {passed}/{total}
 
-| 场景 | 次数 | 平均 | P95 | 最小-最大 | 状态 |
-|------|------|------|-----|-----------|------|
-| {每个场景一行} | | | | | |
+| 场景 | 平均 | P95 | 最小-最大 | 状态 |
+|------|------|-----|-----------|------|
+| 单Agent-查余额 | {avg}s | {p95}s | {min}-{max}s | {passed}/{runs} |
+| 单Agent-交易明细 | {avg}s | {p95}s | {min}-{max}s | {passed}/{runs} |
+| 单Agent-分类消费 | {avg}s | {p95}s | {min}-{max}s | {passed}/{runs} |
+| MultiAgent-记账 | {avg}s | {p95}s | {min}-{max}s | {passed}/{runs} |
+| MultiAgent-汇总分析 | {avg}s | {p95}s | {min}-{max}s | {passed}/{runs} |
 
-**整体**: {total_passed} 次通过, 平均 {avg}s, 总耗时 {total}s
-**审计日志**: {问题数量} 个问题 / 正常
+**整体**: {passed}/{total} 通过, 平均 {avg}s, 总耗时 {total}s
+**审计日志**: {issues_summary}
 **结论**: ✓ 全部通过 / ✗ 存在失败
 ```
 
-如果失败：
-- 列出失败场景和错误原因
-- 列出审计日志问题
-- 给出排查建议（超时 → LLM API；空记录 → 双重注册；unknown → context 传递）
+如果 `audit_issues` 非空，逐条列出；若为空数组，显示 "正常"。
+
+如果有场景失败（status=fail），列出失败场景名称和 error 字段内容，并给出排查方向：
+- 超时 → 检查 LLM API 可用性
+- "AI 服务暂时不可用" → 查看 `finance-agent/logs/` 日志
+- 审计日志空记录 → 检查 `LlmAuditAdvisor` 双重注册
+- 审计日志 unknown traceId → 检查 context 跨线程传递
