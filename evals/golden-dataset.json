@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "Personal Finance Agent — Golden Dataset for AI behavior evaluation. 真实 LLM 调用 + 真实 MCP 工具。每个 case 用 userId=default 的真实账户数据。",
+  "description": "Personal Finance Agent — Golden Dataset for AI behavior evaluation. 真实 LLM 调用 + 真实 MCP 工具。每个 case 用 userId=default 的真实账户数据。共 15 条用例，覆盖 6 个维度（tool_selection/rejection/amount_accuracy/multi_turn/tool_conflict/correction）。",
   "cases": [
     {
       "id": "tool-001",
@@ -107,6 +107,76 @@
         "toolParamsContain": { "userId": "default" },
         "responseContainsAny": ["元", "金额", "交易"],
         "responseNotContains": ["大约", "大概", "左右", "约"]
+      }
+    },
+    {
+      "id": "multi-001",
+      "category": "multi_turn",
+      "input": "我的银行卡余额多少？刚花了35块在食堂吃饭，记一笔",
+      "context": { "userId": "default" },
+      "expectations": {
+        "toolCalled": "add_transaction",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功"],
+        "responseNotContains": ["大约", "大概", "左右", "约"]
+      }
+    },
+    {
+      "id": "multi-002",
+      "category": "multi_turn",
+      "input": "我最近有什么支出？帮我按类别汇总一下",
+      "context": { "userId": "default" },
+      "expectations": {
+        "toolCalled": "summarize_transactions",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["餐饮", "交通", "购物"],
+        "responseNotContains": ["大约", "大概"]
+      }
+    },
+    {
+      "id": "conflict-001",
+      "category": "tool_conflict",
+      "input": "我有多少钱",
+      "context": { "userId": "default" },
+      "expectations": {
+        "toolCalled": "list_accounts",
+        "toolParamsContain": { "userId": "default" },
+        "responseNotContains": ["大约", "大概"]
+      }
+    },
+    {
+      "id": "conflict-002",
+      "category": "tool_conflict",
+      "input": "帮我看看我最近的交易记录",
+      "context": { "userId": "default" },
+      "expectations": {
+        "toolCalled": "list_transactions",
+        "toolParamsContain": { "userId": "default" },
+        "responseNotContains": ["大约", "大概"]
+      }
+    },
+    {
+      "id": "correction-001",
+      "category": "correction",
+      "input": "帮我查一下我的账户，不对，我是说查一下我的交易记录",
+      "context": { "userId": "default" },
+      "expectations": {
+        "toolCalled": "list_transactions",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["交易", "流水", "笔"],
+        "responseNotContains": ["大约", "大概"]
+      }
+    },
+    {
+      "id": "correction-002",
+      "category": "correction",
+      "input": "帮我记一笔，打车花了50元。等一下，不是50，是35元",
+      "context": { "userId": "default" },
+      "expectations": {
+        "toolCalled": "add_transaction",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功"],
+        "responseNotContains": ["50"]
       }
     }
   ]
