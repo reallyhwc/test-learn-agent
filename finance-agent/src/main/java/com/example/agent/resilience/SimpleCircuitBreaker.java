@@ -63,9 +63,14 @@ public class SimpleCircuitBreaker {
         state = State.CLOSED;
     }
 
-    /** 记录失败调用，累计达到阈值后打开熔断。 */
+    /** 记录失败调用，累计达到阈值后打开熔断。HALF_OPEN 下失败立即回到 OPEN。 */
     public void recordFailure() {
         lastFailureTime.set(System.currentTimeMillis());
+        if (state == State.HALF_OPEN) {
+            state = State.OPEN;
+            failureCount.set(0);
+            return;
+        }
         int failures = failureCount.incrementAndGet();
         if (failures >= failureThreshold) {
             state = State.OPEN;

@@ -82,4 +82,23 @@ class SimpleCircuitBreakerTest {
         var breaker = new SimpleCircuitBreaker("my-breaker", 3, 1000);
         assertThat(breaker.getName()).isEqualTo("my-breaker");
     }
+
+    @Test
+    void shouldRejectCallsAfterFailedProbeWithThresholdGt1() throws InterruptedException {
+        // 使用与生产环境相同的 threshold=3
+        var breaker = new SimpleCircuitBreaker("test", 3, 50);
+        // 触发熔断
+        breaker.recordFailure();
+        breaker.recordFailure();
+        breaker.recordFailure();
+        assertThat(breaker.isCallPermitted()).isFalse();
+
+        Thread.sleep(100);
+        // HALF_OPEN 试探
+        assertThat(breaker.isCallPermitted()).isTrue();
+        // 试探失败 → 应立即回到 OPEN
+        breaker.recordFailure();
+        // Bug: 当前 failureCount 从 0 到 1，1 < 3，所以不会回到 OPEN
+        assertThat(breaker.isCallPermitted()).isFalse();
+    }
 }
