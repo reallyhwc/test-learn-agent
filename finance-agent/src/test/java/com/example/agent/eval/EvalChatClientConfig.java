@@ -26,16 +26,16 @@ public class EvalChatClientConfig {
     }
 
     /**
-     * 旁路 ChatClient：复用同一份 ChatModel + MCP ToolCallbackProvider，
-     * 但只挂载 RecordingAdvisor，不挂 Guardrails。
+     * 旁路 ChatClient：独立创建 Builder（避免复用 @Primary Bean 导致工具重复注册），
+     * 仅挂载 RecordingAdvisor，不挂 Guardrails/ChatMemory/审计。
      */
     @Bean(name = "evalChatClient")
     public ChatClient evalChatClient(
-            ChatClient.Builder chatClientBuilder,
+            org.springframework.ai.chat.model.ChatModel chatModel,
             List<ToolCallbackProvider> toolProviders,
             ToolCallRecordingAdvisor recordingAdvisor
     ) {
-        return chatClientBuilder
+        return ChatClient.builder(chatModel)
                 .defaultAdvisors(recordingAdvisor)
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();

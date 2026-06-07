@@ -30,7 +30,7 @@ Agent 服务不需要单独启动（Eval 不走 HTTP，直接内存内调用 Cha
 ### Java 栈
 
 ```bash
-cd finance-agent && ./mvnw test -Dgroups=evals -DexcludedGroups= -Dtest=AgentEvalTest 2>&1
+cd finance-agent && ./mvnw test -Deval.excluded.groups= -Dgroups=evals -Dtest=AgentEvalTest 2>&1
 ```
 
 如果报 "JAVA_HOME not set"，尝试自动检测：
