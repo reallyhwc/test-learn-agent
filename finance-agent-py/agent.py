@@ -162,6 +162,9 @@ class FinanceAgent:
         full_text = "".join(full_response)
 
         # 第三层防护: 金额幻觉检测
+        # 注: 流式场景下不易提取工具返回的金额，故 tool_amounts 传空列表。
+        # check_amount_hallucination 的 short-circuit 逻辑会跳过检测（无副作用）。
+        # chat() 同步路径已完整实现；此处保留调用点为未来流式工具消息提取预留。
         if full_text and check_amount_hallucination(full_text, []):
             logger.warning("OutputGuardrail(stream): 幻觉检测触发 userId=%s", user_id)
 
