@@ -28,13 +28,14 @@ Frontend (:5173) → Agent → MCP Server → Backend (:8080)
 
 ### 项目级子 Agent（开发工具层）
 
-除了运行时服务，项目通过 `.claude/agents/` 定义了 3 个 **Claude Code 子 Agent**，用于自动化开发流程：
+除了运行时服务，项目通过 `.claude/agents/` 定义了 4 个 **Claude Code 子 Agent**，用于自动化开发流程：
 
 | Agent | 触发词 | 职责 |
 |-------|--------|------|
 | `code-reviewer` | "审查 / review 代码" | 按 CLAUDE.md 规范审查代码质量 |
 | `eval-runner` | "跑 eval / 评估" | 运行 Golden Dataset Eval 测试 |
 | `regression-test` | "回归测试" | 多场景 AI Agent 回归测试 |
+| `restart-services` | "重启 / restart" | 一键杀进程 → 启动全部服务 → 健康检查 |
 
 子 Agent 在独立进程中运行，不占用主对话上下文。通过 YAML frontmatter 配置工具集、模型和权限。
 
@@ -146,6 +147,7 @@ Supported providers: DeepSeek, OpenAI, 通义千问, Groq, Moonshot, SiliconFlow
   - `code-reviewer.md` — 代码审查专家，对照 CLAUDE.md 规范审查代码质量
   - `eval-runner.md` — Eval 评估执行器，运行 Golden Dataset 测试并输出报告
   - `regression-test.md` — AI Agent 回归测试，多场景 × 多轮次验证
+  - `restart-services.md` — 一键重启全部服务，杀进程 → 启动 → 健康检查闭环
 - **[`docs/roadmap/`](./docs/roadmap/README.md)** — 5 篇技术演进方向（Guardrails / Evals / HITL / Prompt 管理 / Multi-Agent）
 - **[`docs/troubleshooting/`](./docs/troubleshooting/README.md)** — 失败模式手册
 - **[`evals/`](./evals/README.md)** — Agent 输出质量评估（Golden Dataset + Eval Runner）。改 Prompt 后必跑
