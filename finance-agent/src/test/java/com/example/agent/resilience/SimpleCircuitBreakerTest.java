@@ -98,7 +98,7 @@ class SimpleCircuitBreakerTest {
         assertThat(breaker.isCallPermitted()).isTrue();
         // 试探失败 → 应立即回到 OPEN
         breaker.recordFailure();
-        // Bug: 当前 failureCount 从 0 到 1，1 < 3，所以不会回到 OPEN
+        // HALF_OPEN 下失败不受 threshold 约束，应立即回到 OPEN
         assertThat(breaker.isCallPermitted()).isFalse();
     }
 }
