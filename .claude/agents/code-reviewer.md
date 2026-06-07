@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: 项目代码审查专家。审查代码变更是否遵循 CLAUDE.md 规范、多模块同步、双栈策略和测试要求。用户提到"review"、"审查"、"检查代码"、"PR review"时自动触发。
-tools: Read, Grep, Glob, Bash(git:*)
+tools: Read, Grep, Glob, Bash
 model: inherit
 permissionMode: default
 maxTurns: 25
@@ -58,7 +58,7 @@ git diff --name-only && git diff --cached --name-only
 ```bash
 # 检查 Java 和 Python 的 MCP 工具数量是否一致
 grep -c "@McpTool" finance-mcp-server/src/main/java/com/example/mcp/tool/FinanceTools.java
-grep -c "@mcp.tool" finance-mcp-server-py/src/tools/finance_tools.py
+grep -rc "@mcp.tool" finance-mcp-server-py/ --include="*.py"
 ```
 
 #### 2.4 Anti-Patterns
