@@ -20,3 +20,6 @@ evals/reports/*
 
 # 回归测试报告
 scripts/regression-reports/
+
+# Python 依赖安装标记文件
+*.deps_installed
