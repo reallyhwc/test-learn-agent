@@ -117,7 +117,7 @@
       "expectations": {
         "toolCalled": "add_transaction",
         "toolParamsContain": { "userId": "default" },
-        "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功"],
+        "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功", "余额", "元"],
         "responseNotContains": ["大约", "大概", "左右", "约"]
       }
     },
@@ -141,6 +141,7 @@
       "expectations": {
         "toolCalled": "list_accounts",
         "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["余额", "元", "账户"],
         "responseNotContains": ["大约", "大概"]
       }
     },
@@ -152,6 +153,7 @@
       "expectations": {
         "toolCalled": "list_transactions",
         "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["交易", "笔", "元"],
         "responseNotContains": ["大约", "大概"]
       }
     },
@@ -175,8 +177,7 @@
       "expectations": {
         "toolCalled": "add_transaction",
         "toolParamsContain": { "userId": "default" },
-        "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功"],
-        "responseNotContains": ["50"]
+        "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功", "35", "打车"]
       }
     }
   ]

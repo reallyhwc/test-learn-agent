@@ -48,13 +48,16 @@ open evals/reports/index.html
 
 ## 当前覆盖
 
-9 组用例，3 个评估维度：
+15 组用例，6 个评估维度：
 
 | 维度 | 用例数 | 说明 |
 |------|:-----:|------|
 | `tool_selection` | 5 | 5 个 MCP 工具各 1 case，验证 LLM 工具选择是否正确 |
 | `rejection` | 2 | 与记账无关的请求 + Prompt Injection 是否被拒绝 |
 | `amount_accuracy` | 2 | 金额相关回复是否模糊化（"大约/大概/左右"判失败） |
+| `multi_turn` | 2 | 单条输入串联多个意图，验证上下文保持能力 |
+| `tool_conflict` | 2 | 多个工具候选时能否选择正确的工具 |
+| `correction` | 2 | 用户输入中自我纠错时 Agent 是否使用修正后的值 |
 
 ## 如何运行
 
@@ -122,8 +125,6 @@ cd finance-agent
 
 ## 不在本次范围（backlog）
 
-- Python 栈对应 eval（pytest.parametrize）
-- 多轮对话 case（需要 ChatMemory）
 - CI 集成（GitHub Actions + PR Comment 准确率对比）
 - HTML 报告 / 趋势图
 - LLM Judge（用另一 LLM 给输出打分）
