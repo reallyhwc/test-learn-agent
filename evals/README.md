@@ -48,7 +48,7 @@ open evals/reports/index.html
 
 ## 当前覆盖
 
-15 组用例，6 个评估维度：
+19 组用例，7 个评估维度：
 
 | 维度 | 用例数 | 说明 |
 |------|:-----:|------|
@@ -58,6 +58,7 @@ open evals/reports/index.html
 | `multi_turn` | 2 | 单条输入串联多个意图，验证上下文保持能力 |
 | `tool_conflict` | 2 | 多个工具候选时能否选择正确的工具 |
 | `correction` | 2 | 用户输入中自我纠错时 Agent 是否使用修正后的值 |
+| `intent_routing` | 4 | Supervisor 意图分类准确率 booking/analysis/other |
 
 ## 如何运行
 

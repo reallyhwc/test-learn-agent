@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "description": "Personal Finance Agent — Golden Dataset for AI behavior evaluation. 真实 LLM 调用 + 真实 MCP 工具。每个 case 用 userId=default 的真实账户数据。共 15 条用例，覆盖 6 个维度（tool_selection/rejection/amount_accuracy/multi_turn/tool_conflict/correction）。",
+  "description": "Personal Finance Agent — Golden Dataset for AI behavior evaluation. 真实 LLM 调用 + 真实 MCP 工具。每个 case 用 userId=default 的真实账户数据。共 19 条用例，覆盖 7 个维度（tool_selection/rejection/amount_accuracy/multi_turn/tool_conflict/correction/intent_routing）。",
   "cases": [
     {
       "id": "tool-001",
@@ -178,6 +178,53 @@
         "toolCalled": "add_transaction",
         "toolParamsContain": { "userId": "default", "amount": "35" },
         "responseContainsAny": ["已记录", "记账", "记录", "添加", "成功", "35", "打车"]
+      }
+    },
+    {
+      "id": "route-001",
+      "category": "intent_routing",
+      "input": "记一笔午餐30元",
+      "context": { "userId": "default" },
+      "expectations": {
+        "routedTo": "booking",
+        "toolCalled": "add_transaction",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["记录", "添加", "成功", "已"]
+      }
+    },
+    {
+      "id": "route-002",
+      "category": "intent_routing",
+      "input": "本月花了多少",
+      "context": { "userId": "default" },
+      "expectations": {
+        "routedTo": "analysis",
+        "toolCalled": "summarize_transactions",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["元", "笔"]
+      }
+    },
+    {
+      "id": "route-003",
+      "category": "intent_routing",
+      "input": "我的余额还有多少",
+      "context": { "userId": "default" },
+      "expectations": {
+        "routedTo": "booking",
+        "toolCalled": "list_accounts",
+        "toolParamsContain": { "userId": "default" },
+        "responseContainsAny": ["余额", "元", "账户"]
+      }
+    },
+    {
+      "id": "route-004",
+      "category": "intent_routing",
+      "input": "帮我写首诗",
+      "context": { "userId": "default" },
+      "expectations": {
+        "routedTo": "other",
+        "toolCalled": null,
+        "responseContainsAny": ["记账", "财务", "无法", "不能", "抱歉"]
       }
     }
   ]
