@@ -1,6 +1,7 @@
 .superpowers/
 .idea/
-.claude/
+.claude/*
+!.claude/agents/
 .env
 finance-backend/data/
 finance-agent/data/
