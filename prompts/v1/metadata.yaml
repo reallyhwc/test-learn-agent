@@ -1,0 +1,18 @@
+version: "v1"
+created: "2026-06-07"
+description: "Multi-Agent 架构初版 Prompt，从代码内联提取到独立文件"
+changes:
+  - "从 ChatController.buildSystemPrompt() 提取 single-agent Prompt"
+  - "从 SupervisorAgent.CLASSIFY_PROMPT 提取 supervisor/classify.md"
+  - "从 BookkeeperAgent.SYSTEM_PROMPT 提取 bookkeeper/ 三文件"
+  - "从 AnalystAgent.SYSTEM_PROMPT 提取 analyst/ 三文件"
+  - "新增 prompts/shared/ 共享模块（safety-rules, category-system, account-context-template）"
+eval_baseline:
+  java:
+    total: 19
+    passed: 19
+    pass_rate: 1.0
+  python:
+    total: 19
+    passed: 19
+    pass_rate: 1.0

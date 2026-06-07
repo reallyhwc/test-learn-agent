@@ -22,3 +22,7 @@ llm:
   api_key: ${LLM_API_KEY}
   base_url: https://api.deepseek.com
   model: deepseek-chat
+
+# Prompt 版本管理
+prompt:
+  version: v1          # 当前使用的 Prompt 版本
