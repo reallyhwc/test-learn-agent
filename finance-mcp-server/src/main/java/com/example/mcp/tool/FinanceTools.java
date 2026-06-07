@@ -160,7 +160,7 @@ public class FinanceTools {
             if (accountIdObj != null) uriBuilder.queryParam("accountId", accountIdObj);
 
             java.net.URI uri = uriBuilder.build().toUri();
-            log.info("listTransactions URI: {}", uri);
+            log.info("listTransactions URI: /api/transactions?userId={}", LogMaskUtils.maskUserId(userId));
 
             @SuppressWarnings("unchecked")
             Map<String, Object> pageResult = restClient.get()
@@ -241,7 +241,7 @@ public class FinanceTools {
             if (groupBy != null) uriBuilder.queryParam("groupBy", groupBy);
 
             java.net.URI uri = uriBuilder.build().toUri();
-            log.info("summarizeTransactions URI: {}", uri);
+            log.info("summarizeTransactions URI: /api/transactions/summary?userId={}", LogMaskUtils.maskUserId(userId));
 
             List<Map<String, Object>> result = restClient.get()
                     .uri(uri)
