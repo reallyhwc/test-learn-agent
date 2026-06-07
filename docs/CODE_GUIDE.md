@@ -234,18 +234,21 @@ public class ChatMemoryConfig {
 
 ### 4.1 ChatController 构造函数
 
-> 行号：L46-68
+> 行号：L46-80
 
 ```java
 public ChatController(
-    ChatClient.Builder chatClientBuilder,        // Spring AI 自动配置（类似 Feign Builder）
-    List<ToolCallbackProvider> toolProviders,     // MCP Client 自动发现的工具（类似服务发现）
-    ChatMemory chatMemory,                       // 对话记忆（类似 Redis Session）
-    AgentMetrics agentMetrics,                   // Micrometer 指标
-    AccountContextBuilder accountContextBuilder, // 账户上下文
-    InputGuardrailAdvisor inputGuardrailAdvisor, // 输入防护
+    ChatClient.Builder chatClientBuilder,           // Spring AI 自动配置（类似 Feign Builder）
+    List<ToolCallbackProvider> toolProviders,        // MCP Client 自动发现的工具（类似服务发现）
+    ChatMemory chatMemory,                          // 对话记忆（类似 Redis Session）
+    AgentMetrics agentMetrics,                      // Micrometer 指标
+    AccountContextBuilder accountContextBuilder,    // 账户上下文
+    InputGuardrailAdvisor inputGuardrailAdvisor,    // 输入防护
     ToolCallGuardrailAdvisor toolCallGuardrailAdvisor, // 工具防护
-    OutputGuardrailAdvisor outputGuardrailAdvisor      // 输出防护
+    OutputGuardrailAdvisor outputGuardrailAdvisor,  // 输出防护
+    LlmInteractionLogger llmInteractionLogger,      // LLM 交互日志
+    SupervisorAgent supervisorAgent,                // Multi-Agent 路由（新增）
+    PendingConfirmationStore confirmationStore      // HITL 确认存储（新增）
 ) {
     this.chatClient = chatClientBuilder
         .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))  // 注册所有 MCP 工具
@@ -255,6 +258,10 @@ public ChatController(
 
 **关键理解**：`chatClientBuilder.defaultToolCallbacks(mcpTools).build()` 这一行等价于——
 "创建一个 LLM 客户端，告诉它有这些工具可以调用"。之后 LLM 收到用户消息时，会**自主决定**是否调用某个工具。
+
+**新增依赖说明**：
+- `SupervisorAgent`：Multi-Agent 模式下的意图分类和路由调度器，单 Agent 模式下不使用
+- `PendingConfirmationStore`：HITL 写操作确认的临时存储（ConcurrentHashMap + 60s TTL）
 
 **记忆功能如何接入**：构造函数注入了 `ChatMemory chatMemory`，但它并**不在构造函数中使用**。实际的用法在 `chat()` 和 `chatStream()` 方法中，每次收到请求时动态构建 `MessageChatMemoryAdvisor`：
 
@@ -383,6 +390,179 @@ return """
 ```
 
 **为什么要内置决策规则**：如果不写这些规则，LLM 会"思考"很久才能决定调哪个工具（甚至选错）。内置规则就像你在 Controller 里写 `if-else` 路由一样，让 LLM 快速匹配到正确的工具。
+
+---
+
+## 第四章 B：Multi-Agent 协作架构（2026-06 新增）
+
+### 4B.1 为什么需要 Multi-Agent
+
+单 Agent 模式下，所有 5 个 MCP 工具 + 决策规则 + 角色定义全塞在一个 System Prompt 里。随着功能增长，Prompt 会越来越长，LLM 注意力被稀释——这就是"Lost in the Middle"问题。
+
+Multi-Agent 的解法：**把一个大 Agent 拆成多个专业 Agent，每个只绑定自己需要的工具子集，System Prompt 短而精准（~300 token）。**
+
+```mermaid
+graph TB
+    USER["用户消息"] --> SUPERVISOR["SupervisorAgent<br/>意图分类 (LLM)<br/>无工具"]
+    
+    SUPERVISOR -->|"booking"| BOOKKEEPER["BookkeeperAgent<br/>工具: add_transaction<br/>list_accounts · query_balance"]
+    SUPERVISOR -->|"analysis"| ANALYST["AnalystAgent<br/>工具: list_transactions<br/>summarize_transactions"]
+    SUPERVISOR -->|"other"| REJECT["直接拒绝"]
+    
+    BOOKKEEPER --> SUPERVISOR
+    ANALYST --> SUPERVISOR
+```
+
+### 4B.2 核心组件
+
+#### MultiAgentConfig — ChatClient.Builder Bean 配置
+
+> 文件：[MultiAgentConfig.java](../finance-agent/src/main/java/com/example/agent/config/MultiAgentConfig.java)
+
+这是 Multi-Agent 体系的**基础设施**。为 3 个角色各创建一个独立的 `ChatClient.Builder` Bean，每个绑定不同的 MCP 工具子集：
+
+| Bean 名称 | 绑定工具 | 用途 |
+|-----------|---------|------|
+| `chatClientBuilder` (@Primary) | 无（ChatController 构造函数绑定全量） | 单 Agent 模式向后兼容 |
+| `bookkeeperChatClientBuilder` | `add_transaction`, `list_accounts`, `query_balance` | Bookkeeper Agent |
+| `analystChatClientBuilder` | `list_transactions`, `summarize_transactions` | Analyst Agent |
+| `supervisorChatClientBuilder` | 无（纯文本分类） | Supervisor Agent |
+
+```java
+@Configuration
+public class MultiAgentConfig {
+    static final List<String> BOOKKEEPER_TOOLS = List.of(
+            "add_transaction", "list_accounts", "query_balance");
+    static final List<String> ANALYST_TOOLS = List.of(
+            "list_transactions", "summarize_transactions");
+
+    @Bean
+    @Primary  // 单 Agent 模式使用，不预绑工具
+    ChatClient.Builder chatClientBuilder(ChatModel chatModel) {
+        return ChatClient.builder(chatModel);
+    }
+
+    @Bean(name = "bookkeeperChatClientBuilder")
+    ChatClient.Builder bookkeeperChatClientBuilder(
+            ChatModel chatModel, List<ToolCallbackProvider> toolProviders) {
+        var filtered = filterTools(toolProviders, BOOKKEEPER_TOOLS);
+        return ChatClient.builder(chatModel)
+                .defaultToolCallbacks(filtered.toArray(new ToolCallbackProvider[0]));
+    }
+    // analystChatClientBuilder, supervisorChatClientBuilder 类似...
+}
+```
+
+**你可以这样理解**：`MultiAgentConfig` 就像一个"微服务的服务注册中心"——为每个子 Agent 注册了它需要的工具（API）。`filterTools()` 方法等价于"按服务名过滤 API 列表"。
+
+#### SupervisorAgent — 意图分类 + 路由
+
+> 文件：[SupervisorAgent.java](../finance-agent/src/main/java/com/example/agent/multiagent/SupervisorAgent.java)
+
+```java
+// classify(userMessage) → "booking" | "analysis" | "other"
+// MAX_ROUNDS = 2（防止循环调用）
+// getSpecialistClient(intent) → 返回对应子 Agent 的 ChatClient
+// getSpecialistPrompt(intent) → 返回对应子 Agent 的 System Prompt
+```
+
+**执行流程**：
+1. 用户消息 → `classify()` 用 LLM 做意图分类（CLASSIFY_PROMPT 约 150 token）
+2. 分类结果 `booking` → 获取 BookkeeperAgent 的 ChatClient + System Prompt
+3. 子 Agent 执行（LLM + 工具调用）
+4. 返回结果给用户（最多 2 轮：Supervisor → Specialist → Supervisor）
+
+#### BookkeeperAgent / AnalystAgent — 子 Agent
+
+> 文件：[BookkeeperAgent.java](../finance-agent/src/main/java/com/example/agent/multiagent/BookkeeperAgent.java)
+> 文件：[AnalystAgent.java](../finance-agent/src/main/java/com/example/agent/multiagent/AnalystAgent.java)
+
+每个子 Agent 包含：
+- **System Prompt**（~300 token）— 只含本领域的角色定义和工具规则
+- **chatClient() 方法** — 使用自己的 ChatClient.Builder 构建请求
+
+```
+BookkeeperAgent SYSTEM_PROMPT 核心规则：
+  1. 记录新交易 → add_transaction
+  2. 查询余额 → query_balance  
+  3. 列出交易明细 → list_transactions
+  4. 列出账户 → list_accounts
+  禁止：做任何分析、对比、趋势判断
+
+AnalystAgent SYSTEM_PROMPT 核心规则：
+  1. 汇总统计 → summarize_transactions
+  2. 查看交易明细 → list_transactions
+  3. 对比分析 → 多次调用工具后进行数学计算
+  禁止：模糊金额表述（如"大概花了 100 多"）
+```
+
+### 4B.3 新增端点
+
+> 文件：[ChatController.java](../finance-agent/src/main/java/com/example/agent/controller/ChatController.java)
+
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `/api/chat/multi-agent/stream` | POST | Multi-Agent SSE 流式接口（Supervisor 驱动） |
+| `/api/chat/confirm` | POST | HITL 确认写操作 |
+| `/api/chat/cancel` | POST | HITL 取消写操作 |
+
+### 4B.4 HITL (Human-in-the-Loop) 确认机制
+
+> 文件：[PendingConfirmationStore.java](../finance-agent/src/main/java/com/example/agent/multiagent/PendingConfirmationStore.java)
+
+写操作（`add_transaction`）不会立即执行，而是先存储到 `PendingConfirmationStore`，向前端推送确认卡片：
+
+```
+用户: "记一笔午餐 30 元"
+  → Agent 识别为 booking 意图
+  → BookkeeperAgent 准备调用 add_transaction
+  → 检测到写操作 → 暂停执行
+  → 存储确认请求到 PendingConfirmationStore
+  → SSE 推送: event:confirmation
+  → 前端显示 ConfirmationCard（确认/修改/取消）
+  
+  用户点击 [确认]:
+    → POST /api/chat/confirm
+    → 执行已暂存的工具调用
+    → SSE 返回执行结果
+  
+  用户点击 [取消]:
+    → POST /api/chat/cancel
+    → 移除确认请求
+    → SSE 返回 "好的，已取消"
+
+  60s 无操作:
+    → @Scheduled 定时驱逐过期请求
+```
+
+**核心设计**：`PendingConfirmationStore` 使用 `ConcurrentHashMap` + drain 语义（取走即删除），防止重复执行。60s TTL + 每 10s 定时驱逐。
+
+### 4B.5 Python 侧（LangGraph）
+
+> 文件：[multiagent/](../finance-agent-py/multiagent/) 目录
+
+Python 侧使用 LangGraph 的 `StateGraph` 原生支持 Multi-Agent：
+
+```python
+# graph_builder.py
+graph = StateGraph(AgentState)
+graph.add_node("supervisor", supervisor_node)
+graph.add_node("bookkeeper", bookkeeper_node)
+graph.add_node("analyst", analyst_node)
+graph.add_edge("__start__", "supervisor")
+# 子节点完成后回到 supervisor，形成循环
+# recursion_limit=5 防止无限循环
+app = graph.compile()
+```
+
+**Java vs Python 对比**：
+
+| 维度 | Java | Python |
+|------|------|--------|
+| 实现方式 | 手动编排（SupervisorAgent + MultiAgentConfig） | LangGraph StateGraph |
+| 工具子集过滤 | `filterTools()` 方法过滤 ToolCallbackProvider | 创建子 LLM 时绑定不同 tools 列表 |
+| 循环控制 | `MAX_ROUNDS = 2`（代码级限制） | `recursion_limit = 5`（框架级限制） |
+| 学习价值 | 理解 Multi-Agent 底层原理 | 学习 LangGraph 框架设计 |
 
 ---
 
@@ -551,15 +731,22 @@ String sessionUserId = response.context().get(CONTEXT_USER_ID).toString();
 | 文件 | 关键方法 | 行号 | 职责 |
 |------|---------|------|------|
 | [AgentApplication](../finance-agent/src/main/java/com/example/agent/AgentApplication.java) | `main()` | L12-14 | 启动入口 + .env 加载 |
-| [ChatController](../finance-agent/src/main/java/com/example/agent/controller/ChatController.java) | 构造函数 | L46-68 | 注入依赖 + 构建 ChatClient |
-| ↑ | `chat()` | L75-128 | 同步对话接口 |
-| ↑ | `chatStream()` | L130-262 | **流式对话接口（核心）** |
-| ↑ | `buildSystemPrompt()` | L360-390 | System Prompt 构建 |
-| ↑ | `writeSseData()` | L267-280 | SSE 数据事件发送 |
-| ↑ | `writeSseThinking()` | L282-294 | SSE 推理事件发送 |
-| ↑ | `writeSseError()` | L296-307 | SSE 错误事件发送 |
-| ↑ | `sanitizeUserId()` | L338-344 | userId 清洗 |
-| ↑ | `validateAndTrimMessage()` | L349-358 | 消息验证 + 截断 |
+| [ChatController](../finance-agent/src/main/java/com/example/agent/controller/ChatController.java) | 构造函数 | L46-80 | 注入依赖 + 构建 ChatClient |
+| ↑ | `chat()` | — | 同步对话接口 |
+| ↑ | `chatStream()` | — | **流式对话接口（核心）** |
+| ↑ | `chatMultiAgentStream()` | — | Multi-Agent 流式接口 |
+| ↑ | `confirm()` / `cancel()` | — | HITL 确认/取消端点 |
+| ↑ | `buildSystemPrompt()` | — | System Prompt 构建 |
+| ↑ | `writeSseData()` | — | SSE 数据事件发送 |
+| ↑ | `writeSseThinking()` | — | SSE 推理事件发送 |
+| ↑ | `writeSseError()` | — | SSE 错误事件发送 |
+| ↑ | `sanitizeUserId()` | — | userId 清洗 |
+| ↑ | `validateAndTrimMessage()` | — | 消息验证 + 截断 |
+| [MultiAgentConfig](../finance-agent/src/main/java/com/example/agent/config/MultiAgentConfig.java) | 3 个 Bean 方法 | — | ChatClient.Builder 工具子集配置 |
+| [SupervisorAgent](../finance-agent/src/main/java/com/example/agent/multiagent/SupervisorAgent.java) | `classify()` | — | LLM 意图分类 + 路由 |
+| [BookkeeperAgent](../finance-agent/src/main/java/com/example/agent/multiagent/BookkeeperAgent.java) | `chatClient()` | — | 记账专员（3 个 CRUD 工具） |
+| [AnalystAgent](../finance-agent/src/main/java/com/example/agent/multiagent/AnalystAgent.java) | `chatClient()` | — | 分析专员（2 个分析工具） |
+| [PendingConfirmationStore](../finance-agent/src/main/java/com/example/agent/multiagent/PendingConfirmationStore.java) | `drain()` | — | HITL 确认存储（60s TTL） |
 | [ChatMemoryConfig](../finance-agent/src/main/java/com/example/agent/config/ChatMemoryConfig.java) | `chatMemory()` | L16-18 | ChatMemory Bean 定义 |
 | [JsonFileChatMemory](../finance-agent/src/main/java/com/example/agent/memory/JsonFileChatMemory.java) | `trimAndPersist()` | L93-113 | 记忆截断 + 持久化 |
 | [AccountContextBuilder](../finance-agent/src/main/java/com/example/agent/context/AccountContextBuilder.java) | `buildSummary()` | L55-76 | 账户摘要（30s 缓存 + 熔断） |

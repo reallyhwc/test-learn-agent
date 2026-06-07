@@ -35,7 +35,7 @@ A full-stack project with 6 service modules, exploring how to build AI-driven ap
 graph LR
     Browser["🌐 Browser<br/>:5173"]
     Frontend["📱 Frontend<br/>Vue 3 + Element Plus<br/>+ ECharts"]
-    Agent["🤖 Agent :8081/:8084<br/>Spring AI / LangChain<br/>MCP Client<br/>ChatMemory"]
+    Agent["🤖 Agent :8081/:8084<br/>Spring AI / LangChain<br/>Multi-Agent<br/>MCP Client · ChatMemory"]
     LLM["🧠 LLM<br/>DeepSeek / OpenAI<br/>Compatible API"]
     MCPServer["🔧 MCP Server :8082/:8083<br/>Spring AI MCP / FastMCP<br/>5 Tools"]
     Backend["💾 Backend :8080<br/>Spring Boot 3.4<br/>CSV Storage"]
@@ -90,15 +90,20 @@ The frontend header displays the current AI provider with a clickable badge.
 ├── finance-mcp-server-py/             Python FastMCP · feature-complete
 │   └── server.py                      5 MCP tools (SSE transport)
 │
-├── finance-agent/                     Spring AI 1.1 · MCP Client · ChatMemory
-│   ├── controller/                    ChatController (/chat/stream SSE)
+├── finance-agent/                     Spring AI 1.1 · MCP Client · Multi-Agent
+│   ├── controller/                    ChatController (Single + Multi-Agent + HITL endpoints)
+│   ├── multiagent/                    SupervisorAgent, BookkeeperAgent, AnalystAgent
+│   ├── config/                        MultiAgentConfig (3 ChatClient.Builder beans)
 │   ├── context/                       AccountContextBuilder (30s cache)
+│   ├── guardrails/                    3-layer Guardrails (Input/ToolCall/Output Advisor)
 │   ├── memory/                        Conversation memory (max 20 turns)
 │   └── metrics/                       AgentMetrics (TTFT, token usage)
 │
-├── finance-agent-py/                  Python LangChain · ReAct Agent · feature-complete
-│   ├── agent.py                       FinanceAgent (MCP tools + DeepSeek LLM)
-│   ├── chat_server.py                 FastAPI SSE streaming endpoints
+├── finance-agent-py/                  Python LangChain · LangGraph · Multi-Agent
+│   ├── agent.py                       FinanceAgent + MultiAgentFinanceAgent
+│   ├── multiagent/                    StateGraph (supervisor/bookkeeper/analyst nodes)
+│   ├── guardrails.py                  3-layer Guardrails (Python equivalent)
+│   ├── chat_server.py                 FastAPI SSE endpoints (Single + Multi-Agent)
 │   ├── system_prompt.py               System Prompt + account context injection
 │   ├── memory_manager.py              JSON file conversation memory
 │   └── config_loader.py               .env + config.yaml loader
@@ -154,6 +159,42 @@ sequenceDiagram
 ```
 
 **Core design: The LLM autonomously decides which tool to call.** The System Prompt embeds decision rules (e.g., "use summarize_transactions for aggregation queries"), and the LLM acts accordingly — the essence of the Agent pattern.
+
+### Multi-Agent Architecture (Implemented 2026-06)
+
+The project has evolved into a **Supervisor + Bookkeeper + Analyst** three-agent collaboration pattern, solving the "Lost in the Middle" problem caused by long single-agent System Prompts:
+
+```mermaid
+graph TB
+    USER["👤 User Message"] --> SUPERVISOR["Supervisor Agent<br/>Intent Classification + Routing<br/>No tools · Text-only LLM"]
+
+    SUPERVISOR -->|"booking/balance/transactions"| BOOKKEEPER["Bookkeeper Agent<br/>Tools: add_transaction<br/>list_accounts · query_balance<br/>Prompt ~300 tokens"]
+    SUPERVISOR -->|"summary/analysis/compare"| ANALYST["Analyst Agent<br/>Tools: list_transactions<br/>summarize_transactions<br/>Prompt ~300 tokens"]
+    SUPERVISOR -->|"chitchat/irrelevant"| REJECT["Direct Rejection<br/>No agent called"]
+
+    BOOKKEEPER --> SUPERVISOR
+    ANALYST --> SUPERVISOR
+    SUPERVISOR -->|"aggregate results"| RESP["SSE Streaming Output"]
+
+    style SUPERVISOR fill:#ff9800,color:#fff
+    style BOOKKEEPER fill:#4caf50,color:#fff
+    style ANALYST fill:#2196f3,color:#fff
+    style REJECT fill:#f44336,color:#fff
+```
+
+| Mechanism | Description |
+|-----------|-------------|
+| **Intent Classification** | Supervisor uses LLM to classify messages as `booking` / `analysis` / `other` |
+| **Tool Subsets** | Bookkeeper gets 3 CRUD tools, Analyst gets 2 analysis tools, Supervisor has none |
+| **Max Rounds** | Max 2 rounds (Supervisor → Specialist → Supervisor) to prevent infinite loops |
+| **HITL Confirmation** | Write operations show confirmation card; execute only after user confirms; 60s TTL auto-cancel |
+| **Shared Memory** | All agents share the same ChatMemory for seamless cross-agent context |
+
+**Java Implementation**: `SupervisorAgent` for LLM intent classification → `MultiAgentConfig` creates independent `ChatClient.Builder` beans with tool subsets.
+
+**Python Implementation**: LangGraph `StateGraph` — `supervisor_node` → `bookkeeper_node` / `analyst_node` → back to `supervisor_node`, with `recursion_limit=5`.
+
+**Frontend**: Agent mode toggle in AppHeader (Single / Multi-Agent), `ConfirmationCard` component for HITL.
 
 ---
 
@@ -304,6 +345,8 @@ Agent and MCP Server each have Java and Python implementations, feature-complete
 | **filters JSON param** | Merge optional params into JSON string to avoid MCP Schema required/optional ambiguity |
 | **System Prompt decision rules** | Built-in tool selection rules (e.g., "use summarize for aggregation") reduce LLM reasoning loops |
 | **Agent external init** | Python Agent initializes MCP connection before uvicorn starts, avoiding FastAPI lifespan + anyio cancel scope conflict |
+| **Multi-Agent tool subsets** | Each specialist binds only needed MCP tools (Bookkeeper 3 / Analyst 2), shortening System Prompts and improving LLM decision accuracy |
+| **HITL write confirmation** | Write operations like add_transaction show confirmation card; execute only after user confirms; 60s TTL auto-cancel |
 
 ---
 
@@ -399,7 +442,7 @@ All queries go through the MCP tool chain. The AI never fabricates data — the 
 ## Test Suite
 
 ```
-Full-stack coverage: Backend ~46 tests + Frontend 109 tests + MCP ~16 tests + Agent Java 14 tests + Python 33 tests
+Full-stack coverage: Backend ~46 + Frontend 109 + MCP ~16 + Agent Java 105 + Python 76 ≈ 352 tests
 ```
 
 | Layer | Framework | Coverage |
@@ -408,11 +451,16 @@ Full-stack coverage: Backend ~46 tests + Frontend 109 tests + MCP ~16 tests + Ag
 | **Backend Service** | JUnit 5 | CSV read/write, multi-user isolation, balance calculation |
 | **Backend Exceptions** | MockMvc | GlobalExceptionHandler unified responses |
 | **MCP Tools (Java)** | MockRestServiceServer | 5 tools normal/error paths, input validation, JSON fallback |
-| **Agent (Java)** | JUnit 5 + MockMvc | Circuit breaker state transitions, feedback endpoint, memory management |
-| **Frontend Components** | Vitest + Vue Test Utils | ChatPanel, ChatMessage, TransactionForm, AppHeader, TransactionList, AccountList |
-| **Frontend Store** | Vitest | Pinia userStore persistence + aiStore Agent/MCP switching |
-| **Frontend Utils** | Vitest | API wrapper, SSE stream parsing (incl. CRLF compat), Markdown rendering, chart extraction |
-| **Python Agent** | pytest + pytest-asyncio | Config loading, memory management, System Prompt, SSE endpoints, userId sanitization |
+| **Agent (Java)** | JUnit 5 + MockMvc | ChatController chat/stream, SSE, LLM integration |
+| **Multi-Agent (Java)** | JUnit 5 + MockMvc | Supervisor classification, Bookkeeper/Analyst routing, HITL confirm/cancel |
+| **Guardrails (Java)** | JUnit 5 | Injection 21 + Tool audit 13 + Output hallucination 15 = 49 tests |
+| **Frontend Components** | Vitest + Vue Test Utils | ChatPanel, ChatMessage, ConfirmationCard, TransactionForm, AppHeader |
+| **Frontend Store** | Vitest | Pinia userStore persistence + aiStore agent mode/MCP switching |
+| **Frontend Utils** | Vitest | API wrapper, SSE parsing (incl. CRLF compat), Markdown, chart extraction |
+| **Python Agent** | pytest + pytest-asyncio | Config loading, memory, System Prompt, SSE endpoints, userId sanitization |
+| **Python Multi-Agent** | pytest | LangGraph node tests, routing correctness, HITL confirmation flow |
+| **Guardrails (Python)** | pytest | Injection 21 + Amount extraction 8 + Hallucination 7 = 36 tests |
+| **Eval Golden Dataset** | JUnit 5 + pytest | 19 QA pairs (incl. 4 intent routing cases) |
 | **CI** | GitHub Actions | Automated tests + ESLint + coverage + OWASP security scan |
 
 Run tests:
@@ -424,11 +472,14 @@ cd finance-frontend && npx vitest run
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
 
-# Java Agent
+# Java Agent + Multi-Agent + Guardrails (105 tests)
 cd finance-agent && ./mvnw test
 
-# Python Agent (33 tests)
-cd finance-agent-py && python -m pytest tests/ -v
+# Python Agent + Multi-Agent + Guardrails (76 tests)
+cd finance-agent-py && python -m pytest -v
+
+# Eval (requires LLM_API_KEY + backend/mcp-server running)
+cd finance-agent && ./mvnw test -Dgroups=evals -Dtest=AgentEvalTest
 ```
 
 ---

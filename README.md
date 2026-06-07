@@ -36,7 +36,7 @@
 graph LR
     Browser["🌐 浏览器<br/>:5173"]
     Frontend["📱 前端<br/>Vue 3 + Element Plus<br/>+ ECharts"]
-    Agent["🤖 Agent :8081/:8084<br/>Spring AI / LangChain<br/>MCP Client<br/>ChatMemory"]
+    Agent["🤖 Agent :8081/:8084<br/>Spring AI / LangChain<br/>Multi-Agent 协作<br/>MCP Client · ChatMemory"]
     LLM["🧠 LLM<br/>DeepSeek / OpenAI<br/>兼容 API"]
     MCPServer["🔧 MCP Server :8082/:8083<br/>Spring AI MCP / FastMCP<br/>5 个 Tool"]
     Backend["💾 Backend :8080<br/>Spring Boot 3.4<br/>CSV 存储"]
@@ -148,6 +148,44 @@ graph TB
 ```
 
 **核心设计：LLM 自主决定调用哪个工具。** System Prompt 内置参数决策规则（如"涉及汇总用 summarize_transactions"），LLM 据此判断并调用——这就是 Agent 模式的核心。
+
+### Multi-Agent 协作架构（2026-06 已实施）
+
+项目已演进为 **Supervisor + Bookkeeper + Analyst** 三 Agent 协作模式，解决单 Agent Prompt 过长导致的"Lost in the Middle"问题：
+
+```mermaid
+graph TB
+    USER["👤 用户消息"] --> SUPERVISOR["Supervisor Agent<br/>意图分类 + 路由分发<br/>无工具 · 纯文本 LLM"]
+
+    SUPERVISOR -->|"记账/查余额/查交易"| BOOKKEEPER["Bookkeeper Agent<br/>工具: add_transaction<br/>list_accounts · query_balance<br/>System Prompt ~300 token"]
+    SUPERVISOR -->|"汇总/分析/对比"| ANALYST["Analyst Agent<br/>工具: list_transactions<br/>summarize_transactions<br/>System Prompt ~300 token"]
+    SUPERVISOR -->|"闲聊/无关"| REJECT["直接拒绝<br/>不调用任何 Agent"]
+
+    BOOKKEEPER --> SUPERVISOR
+    ANALYST --> SUPERVISOR
+    SUPERVISOR -->|"整合结果"| RESP["SSE 流式输出"]
+
+    style SUPERVISOR fill:#ff9800,color:#fff
+    style BOOKKEEPER fill:#4caf50,color:#fff
+    style ANALYST fill:#2196f3,color:#fff
+    style REJECT fill:#f44336,color:#fff
+```
+
+**核心机制：**
+
+| 机制 | 说明 |
+|------|------|
+| **意图分类** | Supervisor 用 LLM 将用户消息分为 `booking`（记账）/ `analysis`（分析）/ `other`（拒绝） |
+| **工具子集** | Bookkeeper 绑定 3 个 CRUD 工具，Analyst 绑定 2 个分析工具，Supervisor 无工具 |
+| **最大轮次** | 最多 2 轮（Supervisor → Specialist → Supervisor），防止循环调用 |
+| **HITL 确认** | 写操作（add_transaction）先展示确认卡片，用户确认后执行，60s 超时自动取消 |
+| **共享记忆** | 所有 Agent 共享同一个 ChatMemory，跨 Agent 上下文无缝传递 |
+
+**Java 侧实现**：`SupervisorAgent` 做 LLM 意图分类 → `MultiAgentConfig` 为每个 Agent 创建独立 `ChatClient.Builder` Bean，各自绑定工具子集。
+
+**Python 侧实现**：基于 LangGraph `StateGraph`，`supervisor_node` → `bookkeeper_node` / `analyst_node` → 回到 `supervisor_node`，`recursion_limit=5`。
+
+**前端适配**：AppHeader 增加 Agent 模式切换（单 Agent / Multi-Agent），ChatPanel 支持 `confirmation` 事件类型，`ConfirmationCard` 组件展示待确认操作。
 
 ---
 
@@ -301,6 +339,8 @@ Agent 和 MCP Server 各有 Java/Python 两套实现，功能完整且可互换�
 | **filters JSON 参数** | MCP `@McpToolParam` 无法标记 optional，将可选参数合并为 JSON 字符串避免 LLM 困惑 |
 | **System Prompt 决策规则** | 内置工具选择规则（如"汇总用 summarize_transactions"），减少 LLM 反复推理 |
 | **Agent 外部初始化** | Python Agent 在 uvicorn 启动前初始化 MCP 连接，避免 FastAPI lifespan + anyio cancel scope 冲突 |
+| **Multi-Agent 工具子集** | 每个子 Agent 只绑定自己需要的 MCP 工具（Bookkeeper 3 个 / Analyst 2 个），缩短 System Prompt 长度，提升 LLM 决策准确率 |
+| **HITL 写操作确认** | add_transaction 等写操作先展示确认卡片，用户确认后才执行，60s 超时自动取消，防止 AI 幻觉导致数据污染 |
 
 ---
 
@@ -395,17 +435,20 @@ cd finance-frontend && npm run dev                     # :5173
 ├── finance-mcp-server-py/             Python FastMCP · 功能完整
 │   └── server.py                      5 个 MCP 工具 (SSE 传输)
 │
-├── finance-agent/                     Spring AI 1.1 · MCP Client · ChatMemory
-│   ├── controller/                    ChatController (/chat/stream SSE)
+├── finance-agent/                     Spring AI 1.1 · MCP Client · Multi-Agent
+│   ├── controller/                    ChatController (单Agent + Multi-Agent + HITL 端点)
+│   ├── multiagent/                    SupervisorAgent, BookkeeperAgent, AnalystAgent
+│   ├── config/                        MultiAgentConfig (3 个 ChatClient.Builder Bean)
 │   ├── context/                       AccountContextBuilder (30s 缓存)
 │   ├── guardrails/                    三层 Guardrails 防护 (Input/ToolCall/Output Advisor)
 │   ├── memory/                        对话记忆 (max 20 轮)
 │   └── metrics/                       AgentMetrics (TTFT, Token 用量)
 │
-├── finance-agent-py/                  Python LangChain · ReAct Agent · 功能完整
-│   ├── agent.py                       FinanceAgent (MCP 工具 + DeepSeek LLM)
+├── finance-agent-py/                  Python LangChain · LangGraph · Multi-Agent
+│   ├── agent.py                       FinanceAgent + MultiAgentFinanceAgent
+│   ├── multiagent/                    StateGraph (supervisor/bookkeeper/analyst nodes)
 │   ├── guardrails.py                  三层 Guardrails 防护 (Python 对等实现)
-│   ├── chat_server.py                 FastAPI SSE 流式接口
+│   ├── chat_server.py                 FastAPI SSE 流式接口 (单Agent + Multi-Agent)
 │   ├── system_prompt.py               System Prompt + 账户上下文注入
 │   ├── memory_manager.py              JSON 文件对话记忆
 │   └── config_loader.py               .env + config.yaml 加载器
@@ -549,7 +592,7 @@ AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 ## 测试体系
 
 ```
-全栈测试覆盖: 后端 ~46 用例 + 前端 109 用例 + MCP ~16 用例 + Agent Java 63 用例 + Python 69 用例 ≈ 303 用例
+全栈测试覆盖: 后端 ~46 用例 + 前端 109 用例 + MCP ~16 用例 + Agent Java 105 用例 + Python 76 用例 ≈ 352 用例
 ```
 
 | 层 | 框架 | 覆盖范围 |
@@ -558,13 +601,16 @@ AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 | **后端 Service** | JUnit 5 | CSV 读写、多用户隔离、余额计算 |
 | **后端异常处理** | MockMvc | GlobalExceptionHandler 统一响应格式 |
 | **MCP 工具 (Java)** | MockRestServiceServer | 5 个工具正常/异常路径、入参校验、JSON 降级 |
-| **Agent (Java)** | JUnit 5 + MockMvc | 熔断器状态转换、反馈接口、记忆管理 |
+| **Agent (Java)** | JUnit 5 + MockMvc | ChatController 对话接口、流式 SSE、LLM 集成测试 |
+| **Multi-Agent (Java)** | JUnit 5 + MockMvc | Supervisor 意图分类、Bookkeeper/Analyst 路由、HITL 确认/取消 |
 | **Guardrails (Java)** | JUnit 5 | 注入检测 21 + 工具调用审计 13 + 输出幻觉 15 = 49 用例 |
-| **前端组件** | Vitest + Vue Test Utils | ChatPanel、ChatMessage、TransactionForm、AppHeader、TransactionList、AccountList |
-| **前端 Store** | Vitest | Pinia userStore 持久化 + aiStore Agent/MCP 切换 |
+| **前端组件** | Vitest + Vue Test Utils | ChatPanel、ChatMessage、ConfirmationCard、TransactionForm、AppHeader |
+| **前端 Store** | Vitest | Pinia userStore 持久化 + aiStore Agent 模式/MCP 切换 |
 | **前端工具** | Vitest | API 封装、SSE 流解析（含 CRLF 兼容）、Markdown 渲染、图表提取 |
 | **Python Agent** | pytest + pytest-asyncio | 配置加载、记忆管理、System Prompt、SSE 端点、userId 校验 |
+| **Python Multi-Agent** | pytest | LangGraph 节点测试、路由正确性、HITL 确认流程 |
 | **Guardrails (Python)** | pytest | 注入检测 21 + 金额提取 8 + 幻觉检测 7 = 36 用例 |
+| **Eval Golden Dataset** | JUnit 5 + pytest | 19 条 QA 对（含意图路由 4 条） |
 | **CI** | GitHub Actions | 自动化测试 + ESLint + 覆盖率 + OWASP 安全扫描 |
 
 运行测试：
@@ -576,11 +622,14 @@ cd finance-frontend && npx vitest run
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
 
-# Java Agent + Guardrails (63 用例)
+# Java Agent + Multi-Agent + Guardrails (105 用例)
 cd finance-agent && ./mvnw test
 
-# Python Agent + Guardrails (69 用例)
+# Python Agent + Multi-Agent + Guardrails (76 用例)
 cd finance-agent-py && python -m pytest -v
+
+# Eval 评估（需 LLM_API_KEY + 启动 backend/mcp-server）
+cd finance-agent && ./mvnw test -Dgroups=evals -Dtest=AgentEvalTest
 ```
 
 ---
@@ -595,28 +644,25 @@ cd finance-agent-py && python -m pytest -v
 graph LR
     subgraph "已完成 ✅"
         G["01 Guardrails<br/>三层防护栏"]
+        E["02 Evals<br/>评估体系"]
+        H["03 HITL<br/>人机协作"]
+        M["05 Multi-Agent<br/>多智能体协作"]
     end
 
     subgraph "下一步 🔲"
-        E["02 Evals<br/>评估体系"]
-        H["03 HITL<br/>人机协作"]
-    end
-
-    subgraph "远期 🔲"
         P["04 Prompt<br/>版本管理"]
-        M["05 Multi-Agent<br/>多智能体协作"]
     end
 
     G -->|"有了防护才能<br/>安全地自动评估"| E
     E -->|"有了评估才能<br/>量化 HITL 效果"| H
     H -->|"有了确认机制<br/>可以放心改 Prompt"| P
-    P -->|"Prompt 稳定后<br/>再拆分 Agent"| M
+    M -->|"Multi-Agent 稳定后<br/>每个 Agent 独立 Prompt"| P
 
     style G fill:#4caf50,color:#fff
-    style E fill:#ff9800,color:#fff
-    style H fill:#ff9800,color:#fff
-    style P fill:#90a4ae,color:#fff
-    style M fill:#90a4ae,color:#fff
+    style E fill:#4caf50,color:#fff
+    style H fill:#4caf50,color:#fff
+    style M fill:#4caf50,color:#fff
+    style P fill:#ff9800,color:#fff
 ```
 
 ### 当前能力版图
@@ -624,14 +670,17 @@ graph LR
 ```
 已实现 ✅                              待实现 🔲
 ─────────────                        ─────────────
-✅ Agent 基础 (Java/Python 双栈)       🔲 Evals 评估体系
-✅ MCP 协议 (Java/Python 双栈)         🔲 Human-in-the-Loop
-✅ SSE 流式输出                        🔲 Prompt 版本管理
-✅ 对话记忆 (max 20 轮)                🔲 Multi-Agent 协作
-✅ System Prompt 决策规则              🔲 RAG 检索增强
-✅ 熔断器 + 超时                       🔲 结构化输出
-✅ Guardrails 三层防护                 🔲 可观测性仪表盘
-✅ 全栈测试体系 (~303 用例)            🔲 本地模型支持
+✅ Agent 基础 (Java/Python 双栈)       🔲 Prompt 版本管理
+✅ MCP 协议 (Java/Python 双栈)         🔲 RAG 检索增强
+✅ SSE 流式输出                        🔲 结构化输出
+✅ 对话记忆 (max 20 轮)                🔲 可观测性仪表盘
+✅ System Prompt 决策规则              🔲 本地模型支持
+✅ 熔断器 + 超时
+✅ Guardrails 三层防护
+✅ Evals 评估体系 (19 条 Golden Dataset)
+✅ Human-in-the-Loop (写操作确认)
+✅ Multi-Agent 协作 (Supervisor + Bookkeeper + Analyst)
+✅ 全栈测试体系 (~352 用例)
 ✅ AI Coding Harness
 ✅ Java/Python 双栈切换
 ```
@@ -691,9 +740,9 @@ graph TB
 
 ---
 
-### 02 Evals 评估体系 — 🔲 下一步
+### 02 Evals 评估体系 — ✅ 已完成
 
-> **优先级：★★★★☆ · 状态：设计完成，待实施**
+> **优先级：★★★★☆ · 状态：已完成（2026-05）**
 > **一句话理解**：Evals 就是 AI 版的"单元测试"——给 AI 的输出写断言。
 
 #### 为什么需要 Evals
@@ -751,10 +800,10 @@ graph TB
 
 ---
 
-### 03 Human-in-the-Loop — 🔲 下一步
+### 03 Human-in-the-Loop — ✅ 已完成
 
-> **优先级：★★★★☆ · 状态：设计完成，待实施**
-> **一句话理解**：Human-in-the-Loop 就是 AI 版的"二次确认弹窗"——重要操作先问人再做。
+> **优先级：★★★★☆ · 状态：已完成（2026-06）**
+> **一句话理解**：Human-in-the-Loop 就是 AI 版的"二次确认弹窗"——写操作先确认再执行。
 
 #### 为什么需要 HITL
 
@@ -796,17 +845,18 @@ sequenceDiagram
     end
 ```
 
-#### 拆解实施计划（预估 ~24h）
+#### 已实现的关键文件
 
-| 步骤 | 内容 | 涉及模块 |
-|------|------|---------|
-| 1 | `HumanConfirmationAdvisor` — 拦截写操作 tool_call，返回 confirmation 事件 | Agent (Java) |
-| 2 | `PendingConfirmationStore` — 存储待确认操作（内存 Map + 60s 超时） | Agent (Java) |
-| 3 | `/chat/confirm` + `/chat/cancel` API | Agent (Java) |
-| 4 | SSE `confirmation` 事件类型支持 | Agent (Java/Python) |
-| 5 | 前端 `ConfirmationCard` 组件（确认/修改/取消） | Frontend |
-| 6 | Python Agent 对等实现 | Agent (Python) |
-| 7 | 测试 + Eval 覆盖 | 全部 |
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **Java HITL** | `PendingConfirmationStore.java` | 待确认操作存储（ConcurrentHashMap + 60s TTL + 定时驱逐） |
+| **Java HITL** | `ChatController.java` | `/chat/confirm` + `/chat/cancel` 端点 |
+| **Java HITL** | `SupervisorAgent.java` | Multi-Agent 模式下写操作自动走确认流程 |
+| **Python HITL** | `chat_server.py` | `/chat/confirm` + `/chat/cancel` 对等端点 |
+| **前端** | `ConfirmationCard.vue` | 确认卡片组件（确认/修改金额/取消） |
+| **前端** | `ChatPanel.vue` | `confirmation` 事件处理 + 端点路由 |
+| **测试** | `PendingConfirmationStoreTest.java` | 存储 CRUD + TTL 过期 + 并发安全 |
+| **测试** | `HITLIntegrationTest.java` | 端到端确认流程（含 Multi-Agent 模式） |
 
 > 详细设计文档：[`docs/roadmap/03-human-in-the-loop.md`](docs/roadmap/03-human-in-the-loop.md)
 
@@ -857,9 +907,9 @@ sequenceDiagram
 
 ---
 
-### 05 Multi-Agent 协作 — 🔲 远期
+### 05 Multi-Agent 协作 — ✅ 已完成
 
-> **优先级：★★★☆☆ · 状态：设计完成，待实施**
+> **优先级：★★★☆☆ · 状态：已完成（2026-06）**
 > **一句话理解**：Multi-Agent 就是 AI 版的"微服务架构"——把一个大 Agent 拆成多个专业 Agent，各司其职。
 
 #### 为什么考虑 Multi-Agent
@@ -885,17 +935,26 @@ graph TB
     style BUDGET fill:#90a4ae,color:#fff
 ```
 
-#### 拆解实施计划（预估 ~32h）
+#### 已实现的关键文件
 
-| 步骤 | 内容 |
-|------|------|
-| 1 | 设计 Agent 拆分方案（记账 Agent + 分析 Agent + Supervisor） |
-| 2 | Python 侧基于 LangGraph 实现 StateGraph + Supervisor 路由 |
-| 3 | Java 侧基于 Spring AI 实现 Advisor 链内路由（或独立 Agent Bean） |
-| 4 | 每个子 Agent 独立 System Prompt + 独立工具集 |
-| 5 | Supervisor 的意图分类 Prompt 设计 + Eval 覆盖 |
-| 6 | 对话状态在 Agent 间传递（共享 memory） |
-| 7 | 性能测试：多 Agent 延迟 vs 单 Agent 延迟对比 |
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **Java Multi-Agent** | `MultiAgentConfig.java` | 3 个 ChatClient.Builder Bean（Bookkeeper/Analyst/Supervisor），工具子集过滤 |
+| **Java Multi-Agent** | `SupervisorAgent.java` | LLM 意图分类（booking/analysis/other），子 Agent 路由，最大 2 轮 |
+| **Java Multi-Agent** | `BookkeeperAgent.java` | 记账专员 System Prompt + 3 个 CRUD 工具绑定 |
+| **Java Multi-Agent** | `AnalystAgent.java` | 分析专员 System Prompt + 2 个分析工具绑定 |
+| **Java Multi-Agent** | `ChatController.java` | `/api/chat/multi-agent/stream` 端点（Supervisor 驱动） |
+| **Python Multi-Agent** | `multiagent/supervisor_node.py` | LangGraph supervisor 节点（LLM 意图分类） |
+| **Python Multi-Agent** | `multiagent/bookkeeper_node.py` | LangGraph bookkeeper 节点（CRUD 工具绑定） |
+| **Python Multi-Agent** | `multiagent/analyst_node.py` | LangGraph analyst 节点（分析工具绑定） |
+| **Python Multi-Agent** | `multiagent/graph_builder.py` | StateGraph 构建（supervisor ↔ specialist 循环） |
+| **前端** | `AppHeader.vue` | Agent 模式切换下拉框（单 Agent / Multi-Agent） |
+| **前端** | `aiStore.js` | `agentMode` ref + `switchAgentMode()` 方法 |
+| **前端** | `ChatPanel.vue` | Multi-Agent 端点路由 + confirmation 事件处理 |
+| **测试** | `MultiAgentIntegrationTest.java` | Java 侧端到端 Multi-Agent 流程 |
+| **测试** | `SupervisorAgentTest.java` | 意图分类测试（booking/analysis/other） |
+| **测试** | `BookkeeperAgentTest.java` / `AnalystAgentTest.java` | 子 Agent System Prompt 验证 |
+| **Eval** | `golden-dataset.json` | 新增 intent_routing 维度 4 条用例（route-001 ~ 004） |
 
 > 详细设计文档：[`docs/roadmap/05-multi-agent.md`](docs/roadmap/05-multi-agent.md)
 
@@ -904,16 +963,16 @@ graph TB
 ### Roadmap 依赖关系与建议顺序
 
 ```
-Phase 1 ✅ 已完成
-└── Guardrails 三层防护 → 有了安全基线
+Phase 1 ✅ 已完成 (2026-05)
+├── Guardrails 三层防护 → 安全基线
+└── Evals 评估体系 → Golden Dataset 19 条
 
-Phase 2 → 下一步 (可并行)
-├── Evals 评估体系 → 量化 AI 输出质量
-└── Human-in-the-Loop → 写操作先确认
+Phase 2 ✅ 已完成 (2026-06)
+├── Human-in-the-Loop → 写操作确认机制
+└── Multi-Agent 协作 → Supervisor + Bookkeeper + Analyst
 
-Phase 3 → 远期 (依赖 Phase 2)
-├── Prompt 版本管理 → 需要 Evals 验证效果
-└── Multi-Agent → 需要 Prompt 稳定后再拆分
+Phase 3 → 下一步
+└── Prompt 版本管理 → 每个 Agent 独立 Prompt 版本化
 ```
 
 每个方向的详细设计文档（架构图、代码示例、投入产出分析、落地步骤）都在 [`docs/roadmap/`](docs/roadmap/) 目录中。

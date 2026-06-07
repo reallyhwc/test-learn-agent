@@ -6,13 +6,13 @@
 
 ## 文档清单
 
-| 优先级 | 文档 | 主题 | 一句话说明 |
-|:---:|------|------|-----------|
-| 1 | [01-guardrails.md](01-guardrails.md) | Guardrails 防护栏 | 让 AI 不说谎、不越权、不被骗 |
-| 2 | [02-evals.md](02-evals.md) | Evals 评估体系 | 改了 prompt 怎么知道变好还是变坏？ |
-| 3 | [03-human-in-the-loop.md](03-human-in-the-loop.md) | Human-in-the-Loop | 大额操作先确认再执行 |
-| 4 | [04-prompt-engineering.md](04-prompt-engineering.md) | Prompt 版本管理 | 像管理代码一样管理 prompt |
-| 5 | [05-multi-agent.md](05-multi-agent.md) | Multi-Agent 协作 | 多个 AI 分工协作 |
+| 优先级 | 文档 | 主题 | 一句话说明 | 状态 |
+|:---:|------|------|-----------|:---:|
+| 1 | [01-guardrails.md](01-guardrails.md) | Guardrails 防护栏 | 让 AI 不说谎、不越权、不被骗 | ✅ |
+| 2 | [02-evals.md](02-evals.md) | Evals 评估体系 | 改了 prompt 怎么知道变好还是变坏？ | ✅ |
+| 3 | [03-human-in-the-loop.md](03-human-in-the-loop.md) | Human-in-the-Loop | 大额操作先确认再执行 | ✅ |
+| 4 | [04-prompt-engineering.md](04-prompt-engineering.md) | Prompt 版本管理 | 像管理代码一样管理 prompt | 🔲 |
+| 5 | [05-multi-agent.md](05-multi-agent.md) | Multi-Agent 协作 | 多个 AI 分工协作 | ✅ |
 
 ## 怎么用这些文档
 
@@ -25,14 +25,17 @@
 ```
 已覆盖 ✅                          待探索 🔲
 ─────────────                    ─────────────
-✅ Agent 基础 (双栈)              🔲 Evals 评估
-✅ MCP 协议 (双栈)                🔲 Human-in-the-Loop
-✅ SSE 流式输出                   🔲 Prompt 版本管理
-✅ 对话记忆                       🔲 Multi-Agent
-✅ System Prompt 决策规则          🔲 RAG 检索增强
-✅ 熔断器 + 超时                  🔲 结构化输出
-✅ Guardrails 三层防护             🔲 可观测性仪表盘
-✅ 全栈测试体系 (~303 用例)        🔲 本地模型支持
+✅ Agent 基础 (双栈)              🔲 Prompt 版本管理
+✅ MCP 协议 (双栈)                🔲 RAG 检索增强
+✅ SSE 流式输出                   🔲 结构化输出
+✅ 对话记忆                       🔲 可观测性仪表盘
+✅ System Prompt 决策规则          🔲 本地模型支持
+✅ 熔断器 + 超时
+✅ Guardrails 三层防护
+✅ Evals 评估体系
+✅ Human-in-the-Loop
+✅ Multi-Agent 协作
+✅ 全栈测试体系 (~352 用例)
 ✅ AI Coding Harness
 ✅ Java/Python 双栈切换
 ```

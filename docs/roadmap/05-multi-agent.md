@@ -1,6 +1,6 @@
 # 05 Multi-Agent 协作 — 多个 AI 分工协作
 
-> **优先级：★★★☆☆**
+> **优先级：★★★☆☆ · 状态：✅ 已实施（2026-06-07）**
 > **一句话理解：Multi-Agent 就是 AI 版的"微服务架构"——把一个大 Agent 拆成多个专业 Agent，各司其职。**
 
 ---
@@ -413,12 +413,56 @@ result = app.invoke(
 
 ---
 
-## 落地建议
+## 实施总结（2026-06-07）
 
-**第一步（4h）**：Python 侧用 LangGraph 实现 Supervisor + Bookkeeper + Analyst
-**第二步（5h）**：Java 侧手动实现相同的 Supervisor 路由架构
-**第三步（4h）**：共享 ChatMemory 改造，确保上下文跨 Agent 传递
-**第四步（3h）**：前端适配，ChatPanel 显示当前处理的 Agent 名称
-**第五步（3h）**：编写意图路由 Eval 用例，验证路由准确率
+### 已完成
 
-完成后的效果：用户的每条消息会被自动路由到最专业的 Agent 处理。前端可以看到"📝 记账员正在处理..."或"📊 分析师正在处理..."的提示。
+**Java 侧（Spring AI 手动编排）：**
+- `MultiAgentConfig.java` — 4 个 ChatClient.Builder Bean（@Primary 默认 + Bookkeeper + Analyst + Supervisor），工具子集过滤
+- `SupervisorAgent.java` — LLM 意图分类（CLASSIFY_PROMPT），最大 2 轮，getSpecialistClient() 路由
+- `BookkeeperAgent.java` — 记账专员 System Prompt ~300 token，绑定 3 个 CRUD 工具
+- `AnalystAgent.java` — 分析专员 System Prompt ~300 token，绑定 2 个分析工具
+- `ChatController.java` — 新增 `/api/chat/multi-agent/stream` 端点
+- `PendingConfirmationStore.java` — 写操作 HITL 确认（ConcurrentHashMap + 60s TTL）
+- `/api/chat/confirm` + `/api/chat/cancel` 端点
+
+**Python 侧（LangGraph StateGraph）：**
+- `multiagent/state.py` — AgentState 定义（messages + intent + round_count）
+- `multiagent/supervisor_node.py` — supervisor LLM 节点（分类 → Command(goto=...)）
+- `multiagent/bookkeeper_node.py` — bookkeeper 节点（绑定 3 个 CRUD 工具）
+- `multiagent/analyst_node.py` — analyst 节点（绑定 2 个分析工具）
+- `multiagent/graph_builder.py` — StateGraph 构建 + compile（recursion_limit=5）
+- `agent.py` — MultiAgentFinanceAgent 类
+- `chat_server.py` — 新增 `/chat/multi-agent/stream`、`/chat/confirm`、`/chat/cancel` 端点
+
+**前端适配：**
+- `AppHeader.vue` — Agent 模式切换下拉框（单 Agent / Multi-Agent）
+- `aiStore.js` — `agentMode` ref + `switchAgentMode()` 方法
+- `ChatPanel.vue` — Multi-Agent 端点路由 + confirmation 事件处理
+- `ConfirmationCard.vue` — 确认卡片组件（确认/修改金额/取消）
+- `streamParser.js` — 新增 `confirmation` 事件类型支持
+
+**Eval 扩展：**
+- `golden-dataset.json` — 15 → 19 条，新增 intent_routing 维度 4 条
+- `EvalExpectations.java` — 新增 `routedTo` 字段
+
+**测试覆盖：**
+- Java: `MultiAgentIntegrationTest`、`SupervisorAgentTest`、`BookkeeperAgentTest`、`AnalystAgentTest`、`HITLIntegrationTest`、`PendingConfirmationStoreTest`
+- Python: 7 个 Multi-Agent 测试
+- 全部 105 个 Java 测试 + 76 个 Python 测试通过
+
+### 实际投入
+
+约 8h（远低于预估的 32h，得益于 SDD + 子 Agent 并行执行）。
+
+### 实施中踩过的坑
+
+1. **Spring Bean 冲突**：3 个 ChatClient.Builder Bean 导致 `NoUniqueBeanDefinitionException` → 通过 `@Primary` + 独立 `ChatClient.builder(chatModel)` 解决
+2. **工具重复注册**：@Primary builder 和 ChatController 同时注册工具 → 改为 @Primary 不预注册，由 ChatController 构造函数绑定
+3. **测试 .env 加载**：application-test.yml 依赖 `${LLM_API_KEY}` 但测试启动时 .env 未加载 → `LlmCondition` 增加 TCP 检测 + `ChatControllerTest` 静态块加载 .env
+
+### 后续演进方向
+
+- **预算 Agent**（第三阶段）：新增 `check_budget` / `set_budget` MCP 工具
+- **动态工具注册**：MCP 工具热加载，子 Agent 工具集动态调整
+- **Agent 间直接通信**（Swarm 模式）：Agent 自主决定转交任务给其他 Agent
