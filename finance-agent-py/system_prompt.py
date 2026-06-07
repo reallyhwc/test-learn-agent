@@ -4,6 +4,7 @@ from datetime import date
 
 import httpx
 
+from circuit_breaker import SimpleCircuitBreaker
 from config_loader import load_config
 from memory_manager import MemoryManager
 
@@ -11,6 +12,9 @@ logger = logging.getLogger(__name__)
 
 # 模块级 httpx 客户端，复用连接池
 _http_client: httpx.AsyncClient | None = None
+
+# 模块级熔断器，保护后端不可用时的快速失败
+_account_circuit_breaker = SimpleCircuitBreaker("account-context", 3, 30_000)
 
 
 def _get_backend_url() -> str:
@@ -101,8 +105,12 @@ def build_system_prompt(
 
 async def fetch_account_summary(user_id: str) -> str:
     """从 Backend 拉取账户摘要注入 system prompt。
-    与 Java 版 AccountContextBuilder.formatSummary() 逻辑一致。
-    失败时返回空字符串，让 LLM 自己调工具。"""
+    失败时返回空字符串，让 LLM 自己调工具。
+    使用熔断器保护后端不可用时的快速失败。"""
+    if not _account_circuit_breaker.is_call_permitted():
+        logger.warning("熔断器 %s 已打开，跳过账户上下文拉取", _account_circuit_breaker.name)
+        return ""
+
     try:
         client = _get_http_client()
         resp = await client.get(
@@ -111,8 +119,10 @@ async def fetch_account_summary(user_id: str) -> str:
         )
         resp.raise_for_status()
         accounts = resp.json()
+        _account_circuit_breaker.record_success()
         return _format_account_summary(accounts)
     except Exception as e:
+        _account_circuit_breaker.record_failure()
         logger.warning("拉取账户上下文失败 userId=%s: %s", user_id, e)
         return ""
 
