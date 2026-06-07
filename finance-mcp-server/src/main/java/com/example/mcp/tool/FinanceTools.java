@@ -2,6 +2,7 @@ package com.example.mcp.tool;
 
 import com.example.mcp.dto.AccountResponse;
 import com.example.mcp.dto.TransactionResponse;
+import com.example.mcp.util.LogMaskUtils;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.Counter;
 import io.micrometer.core.instrument.MeterRegistry;
@@ -85,7 +86,7 @@ public class FinanceTools {
         long start = System.nanoTime();
         try {
             userId = validateUserId(userId);
-            log.info("queryBalance called with userId={}, accountId={}", userId, accountId);
+            log.info("queryBalance called with userId={}, accountId={}", LogMaskUtils.maskUserId(userId), accountId);
             BigDecimal result = restClient.get()
                     .uri("/api/accounts/{id}/balance", accountId)
                     .retrieve()
@@ -94,7 +95,7 @@ public class FinanceTools {
             return result;
         } catch (Exception e) {
             recordError("query_balance", e);
-            log.error("查询余额失败: userId={}, accountId={}", userId, accountId, e);
+            log.error("查询余额失败: userId={}, accountId={}", LogMaskUtils.maskUserId(userId), accountId, e);
             return "查询余额失败，请检查账户ID是否正确";
         }
     }
@@ -127,7 +128,7 @@ public class FinanceTools {
 
         try {
             userId = validateUserId(userId);
-            log.info("listTransactions called with userId={}, filters={}", userId, filters);
+            log.info("listTransactions called with userId={}, filters={}", LogMaskUtils.maskUserId(userId), filters);
             Map<String, Object> filterMap = parseFilters(filters);
             String startDate = (String) filterMap.get("startDate");
             String endDate = (String) filterMap.get("endDate");
@@ -197,7 +198,7 @@ public class FinanceTools {
             return Map.of("items", items, "total", total, "showing", rawItems.size(), "summary", summary);
         } catch (Exception e) {
             recordError("list_transactions", e);
-            log.error("查询交易记录失败: userId={}", userId, e);
+            log.error("查询交易记录失败: userId={}", LogMaskUtils.maskUserId(userId), e);
             return "查询交易记录失败，请稍后重试";
         }
     }
@@ -225,7 +226,7 @@ public class FinanceTools {
 
         try {
             userId = validateUserId(userId);
-            log.info("summarizeTransactions called with userId={}, filters={}", userId, filters);
+            log.info("summarizeTransactions called with userId={}, filters={}", LogMaskUtils.maskUserId(userId), filters);
             Map<String, Object> filterMap = parseFilters(filters);
             String type = (String) filterMap.get("type");
             String startDate = (String) filterMap.get("startDate");
@@ -251,7 +252,7 @@ public class FinanceTools {
             return result != null ? result : List.of();
         } catch (Exception e) {
             recordError("summarize_transactions", e);
-            log.error("汇总交易统计失败: userId={}", userId, e);
+            log.error("汇总交易统计失败: userId={}", LogMaskUtils.maskUserId(userId), e);
             return "汇总交易统计失败，请稍后重试";
         }
     }
@@ -324,7 +325,7 @@ public class FinanceTools {
             return "添加交易失败，二级分类不能为空";
         }
         log.info("addTransaction called with userId={}, accountId={}, type={}, amount={}, category={}/{}",
-                userId, accountId, type, amount, category, subCategory);
+                LogMaskUtils.maskUserId(userId), accountId, type, LogMaskUtils.maskAmount(amount), category, subCategory);
         long start = System.nanoTime();
 
         try {
@@ -347,7 +348,7 @@ public class FinanceTools {
             return result;
         } catch (Exception e) {
             recordError("add_transaction", e);
-            log.error("添加交易失败: userId={}, accountId={}", userId, accountId, e);
+            log.error("添加交易失败: userId={}, accountId={}", LogMaskUtils.maskUserId(userId), accountId, e);
             return "添加交易失败，请检查参数是否完整";
         }
     }
@@ -370,7 +371,7 @@ public class FinanceTools {
 
         try {
             userId = validateUserId(userId);
-            log.info("listAccounts called with userId={}", userId);
+            log.info("listAccounts called with userId={}", LogMaskUtils.maskUserId(userId));
             // 使用 UriComponentsBuilder 防止 URL 注入（统一风格）
             java.net.URI uri = UriComponentsBuilder.fromPath("/api/accounts")
                     .queryParam("userId", userId)
@@ -384,7 +385,7 @@ public class FinanceTools {
             return result;
         } catch (Exception e) {
             recordError("list_accounts", e);
-            log.error("查询账户列表失败: userId={}", userId, e);
+            log.error("查询账户列表失败: userId={}", LogMaskUtils.maskUserId(userId), e);
             return "查询账户列表失败，请稍后重试";
         }
     }
