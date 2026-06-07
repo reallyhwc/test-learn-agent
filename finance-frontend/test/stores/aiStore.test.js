@@ -132,4 +132,42 @@ describe('aiStore', () => {
     expect(store.mcpType).toBe('python')
     expect(store.loading).toBe(false)
   })
+
+  // === agentMode 测试 ===
+
+  it('默认 agentMode 为 single', () => {
+    const store = useAiStore()
+    expect(store.agentMode).toBe('single')
+  })
+
+  it('agentModeLabel single 时返回 Single-Agent', () => {
+    const store = useAiStore()
+    expect(store.agentModeLabel).toBe('Single-Agent')
+  })
+
+  it('agentModeLabel multi 时返回 Multi-Agent', () => {
+    const store = useAiStore()
+    store.agentMode = 'multi'
+    expect(store.agentModeLabel).toBe('Multi-Agent')
+  })
+
+  it('switchAgentMode 切换到 multi', () => {
+    const store = useAiStore()
+    store.switchAgentMode('multi')
+    expect(store.agentMode).toBe('multi')
+    expect(localStorage.getItem('finance-agent-mode')).toBe('multi')
+  })
+
+  it('switchAgentMode 相同值不重复切换', () => {
+    const store = useAiStore()
+    store.switchAgentMode('single')
+    expect(store.agentMode).toBe('single')
+  })
+
+  it('从 localStorage 恢复 agentMode', () => {
+    localStorage.setItem('finance-agent-mode', 'multi')
+    setActivePinia(createPinia())
+    const store = useAiStore()
+    expect(store.agentMode).toBe('multi')
+  })
 })
