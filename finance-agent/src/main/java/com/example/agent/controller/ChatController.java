@@ -171,7 +171,7 @@ public class ChatController {
                                     .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                                     .advisors(inputGuardrailAdvisor, advisor,
                                             toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                            llmInteractionLogger))
+                                            llmAuditAdvisor))
                             .call()
                             .chatResponse()
             ).get(SYNC_CHAT_TIMEOUT_SECONDS, TimeUnit.SECONDS);
@@ -261,7 +261,7 @@ public class ChatController {
                             .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
                                     toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                    llmInteractionLogger))
+                                    llmAuditAdvisor))
                     .stream()
                     .chatResponse()
                     .subscribe(
@@ -426,6 +426,8 @@ public class ChatController {
             AtomicBoolean firstToken = new AtomicBoolean(false);
             Timer.Sample ttftSample = agentMetrics.startTimer();
             AtomicLong tokenCount = new AtomicLong(0);
+            AtomicLong inputTokensFromUsage = new AtomicLong(0);
+            AtomicLong outputTokensFromUsage = new AtomicLong(0);
             long[] startMs = {System.currentTimeMillis()};
 
             var subscription = specialistClient.prompt()
@@ -439,7 +441,7 @@ public class ChatController {
                             .param(com.example.agent.debug.LlmAuditAdvisor.ADVISOR_PARAM_USER_ID, userId)
                             .advisors(inputGuardrailAdvisor, advisor,
                                     toolCallGuardrailAdvisor, outputGuardrailAdvisor,
-                                    llmInteractionLogger))
+                                    llmAuditAdvisor))
                     .stream()
                     .chatResponse()
                     .subscribe(
@@ -469,6 +471,13 @@ public class ChatController {
                                     tokenCount.incrementAndGet();
                                     writeSseData(outputStream, text, clientGone);
                                 }
+
+                                var metadata = chatResponse.getMetadata();
+                                if (metadata != null && metadata.getUsage() != null) {
+                                    var usageData = metadata.getUsage();
+                                    if (usageData.getPromptTokens() > 0) inputTokensFromUsage.set(usageData.getPromptTokens());
+                                    if (usageData.getCompletionTokens() > 0) outputTokensFromUsage.set(usageData.getCompletionTokens());
+                                }
                             },
                             error -> {
                                 String msg = error.getMessage() != null
@@ -483,7 +492,15 @@ public class ChatController {
                                 long elapsedMs = System.currentTimeMillis() - startMs[0];
                                 log.info("MultiAgent stream completed traceId={} userId={}, tokens={}", traceId, userId, tokenCount.get());
                                 agentMetrics.recordDuration(userId, durationSample);
-                                if (tokenCount.get() == 0 && !clientGone.get()) {
+                                if (elapsedMs > 0 && tokenCount.get() > 0) {
+                                    long tps = tokenCount.get() * 1000 / elapsedMs;
+                                    agentMetrics.recordTokenSpeed(tps);
+                                    long actualInput = inputTokensFromUsage.get();
+                                    long actualOutput = outputTokensFromUsage.get() > 0 ? outputTokensFromUsage.get() : tokenCount.get();
+                                    agentMetrics.recordTokens("deepseek-chat", actualInput, actualOutput);
+                                    writeTokenUsage(userId, actualInput, actualOutput,
+                                            "deepseek-chat", elapsedMs, true);
+                                } else if (tokenCount.get() == 0 && !clientGone.get()) {
                                     log.warn("MultiAgent stream completed with 0 tokens for userId={}", userId);
                                     agentMetrics.recordLlmError("EmptyResponse");
                                     writeSseError(outputStream,

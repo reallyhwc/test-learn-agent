@@ -191,7 +191,7 @@ function abort() {
 
 async function handleConfirm(msg) {
   try {
-    await apiPost('/api/chat/confirm', { confirmationId: msg.confirmationId })
+    await apiPost(`${aiStore.agentApiPrefix}/chat/confirm`, { confirmationId: msg.confirmationId })
     const idx = messages.value.findIndex(m => m.confirmationId === msg.confirmationId)
     if (idx >= 0) {
       messages.value[idx] = { id: msg.id, role: 'assistant', text: '操作已执行', streaming: false }
@@ -203,7 +203,7 @@ async function handleConfirm(msg) {
 
 async function handleCancel(msg) {
   try {
-    await apiPost('/api/chat/cancel', { confirmationId: msg.confirmationId })
+    await apiPost(`${aiStore.agentApiPrefix}/chat/cancel`, { confirmationId: msg.confirmationId })
     const idx = messages.value.findIndex(m => m.confirmationId === msg.confirmationId)
     if (idx >= 0) {
       messages.value[idx] = { id: msg.id, role: 'assistant', text: '操作已取消', streaming: false }

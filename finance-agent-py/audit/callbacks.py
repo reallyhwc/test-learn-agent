@@ -54,6 +54,7 @@ class LlmAuditCallback(BaseCallbackHandler):
         self.user_id = user_id
         self._start_time: float | None = None
         self._input_messages: list[dict] = []
+        self._tool_calls: list[dict] = []
 
     def on_chat_model_start(
         self,
@@ -72,6 +73,20 @@ class LlmAuditCallback(BaseCallbackHandler):
                 self._input_messages.append(
                     {"role": str(role), "content": str(content)}
                 )
+
+    def on_tool_start(
+        self, serialized: dict[str, Any], input_str: str, **kwargs: Any
+    ) -> None:
+        tool_name = serialized.get("name", kwargs.get("name", "unknown"))
+        self._tool_calls.append({
+            "name": tool_name,
+            "arguments": input_str,
+            "result": None,
+        })
+
+    def on_tool_end(self, output: str, **kwargs: Any) -> None:
+        if self._tool_calls:
+            self._tool_calls[-1]["result"] = str(output)[:500]
 
     def on_llm_end(self, response: LLMResult, **kwargs: Any) -> None:
         duration_ms = self._compute_duration()
@@ -141,7 +156,7 @@ class LlmAuditCallback(BaseCallbackHandler):
             },
             "response": {
                 "content": content,
-                "toolCalls": [],
+                "toolCalls": self._tool_calls,
                 "finishReason": finish_reason,
             },
             "tokenUsage": token_usage,

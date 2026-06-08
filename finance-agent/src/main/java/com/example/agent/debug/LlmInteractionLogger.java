@@ -40,6 +40,7 @@ import java.util.Map;
  * <h3>文件路径</h3>
  * <p>{@code logs/llm-interactions/llm-call-YYYY-MM-DD.jsonl}</p>
  */
+@Deprecated(since = "2026-06-08", forRemoval = true)
 @Slf4j
 @Component
 public class LlmInteractionLogger implements BaseAdvisor {

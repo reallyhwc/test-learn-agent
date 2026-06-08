@@ -189,7 +189,7 @@ public class LlmAuditAdvisor implements BaseAdvisor {
 
     static final int MAX_SYSTEM_PROMPT_LENGTH = 200;
 
-    static String truncateSystemPrompt(String prompt) {
+    public static String truncateSystemPrompt(String prompt) {
         if (prompt == null) return null;
         if (prompt.length() <= MAX_SYSTEM_PROMPT_LENGTH) return prompt;
         return prompt.substring(0, MAX_SYSTEM_PROMPT_LENGTH) + "...[truncated, " + prompt.length() + " chars]";

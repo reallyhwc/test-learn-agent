@@ -32,7 +32,7 @@ const props = defineProps({
   expiresAt: { type: String, default: '' },
 })
 
-defineEmits(['confirm', 'cancel'])
+const emit = defineEmits(['confirm', 'cancel'])
 
 const remaining = ref(60)
 let timer = null
@@ -44,6 +44,7 @@ onMounted(() => {
       remaining.value = Math.max(0, Math.round((expires - Date.now()) / 1000))
       if (remaining.value <= 0) {
         clearInterval(timer)
+        emit('cancel')
       }
     }, 1000)
   }
