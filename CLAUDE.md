@@ -261,6 +261,7 @@ Model → Repository → Service → Controller → MCP Server → Agent → Fro
 - `GlobalExceptionHandlerTest`: 历史曾有 3 个用例期望 400 但实际返回 500，目前已全部改为 `isBadRequest()`，需运行测试验证是否仍存在断言/状态码不匹配
 - 系统默认 Java 是 1.8，编译需要：`export JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home`（或 start-all.sh 会自动探测 Homebrew 路径）
 - `Transaction` 使用 `@AllArgsConstructor`，新增字段会破坏所有现有构造调用 → 推荐用 setter 或 Builder
+- **HITL 确认流程未完成**：`PendingConfirmationStore.save()` 从未在生产代码中被调用，Multi-Agent 模式下 `add_transaction` 写操作直接执行无人工确认。前端 `ConfirmationCard` + confirm/cancel 端点已就绪，但后端拦截链路（tool call 检测 → save → event:confirmation 发射）尚未实现。Multi-Agent 模式标记为 beta。
 
 ## Anti-Patterns（禁止事项）
 

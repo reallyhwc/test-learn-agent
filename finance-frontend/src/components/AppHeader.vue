@@ -41,7 +41,7 @@
         placeholder="模式"
       >
         <el-option value="single" label="Single-Agent" />
-        <el-option value="multi" label="Multi-Agent" />
+        <el-option value="multi" label="Multi-Agent (beta)" />
       </el-select>
       <el-select v-model="userStore.currentUser" size="small" class="user-select">
         <el-option v-for="u in userStore.users" :key="u.id" :label="u.name" :value="u.id" />

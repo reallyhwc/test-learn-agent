@@ -366,7 +366,7 @@ public class ChatController {
      * <ul>
      *   <li>Supervisor 先做意图分类，选择 Specialist</li>
      *   <li>thinking 事件扩展 agent 字段，前端可据此显示 Agent 标识</li>
-     *   <li>检测到 add_transaction 写操作时不直接执行，通过 PendingConfirmationStore 拦截</li>
+     *   <li>[未完成] 未来迭代将实现 add_transaction 写操作拦截 + PendingConfirmationStore 确认流程</li>
      * </ul>
      */
     @PostMapping(value = "/chat/multi-agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
