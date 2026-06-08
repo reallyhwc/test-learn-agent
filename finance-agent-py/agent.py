@@ -268,6 +268,9 @@ class MultiAgentFinanceAgent:
         if is_prompt_injection(message):
             return REJECTION_REPLY
 
+        memory = MemoryManager(user_id)
+        memory.add({"role": "user", "content": message})
+
         trace_id = str(uuid.uuid4())
         initial_state = MultiAgentState.create(
             messages=[{"role": "user", "content": message}],
@@ -281,11 +284,23 @@ class MultiAgentFinanceAgent:
         except asyncio.TimeoutError:
             return "AI 响应超时，请简化问题或稍后重试"
 
-        messages = result.get("messages", [])
-        for m in reversed(messages):
+        result_messages = result.get("messages", [])
+        audit_tool_calls(result_messages, user_id)
+
+        output = ""
+        for m in reversed(result_messages):
             if isinstance(m, dict) and m.get("role") == "assistant" and m.get("content"):
-                return str(m.get("content", ""))
-        return "无法处理该请求"
+                output = str(m.get("content", ""))
+                break
+        if not output:
+            return "无法处理该请求"
+
+        tool_amounts = extract_amounts(result_messages)
+        if check_amount_hallucination(output, tool_amounts):
+            output += "\n\n⚠️ 注意：回复中的金额可能不准确，请核实。"
+
+        memory.add({"role": "assistant", "content": output})
+        return output
 
     async def chat_stream(self, user_id: str, message: str):
         """流式对话 — 逐节点 yield SSE 事件 dict。"""
@@ -296,11 +311,15 @@ class MultiAgentFinanceAgent:
             yield {"data": REJECTION_REPLY}
             return
 
+        memory = MemoryManager(user_id)
+        memory.add({"role": "user", "content": message})
+
         trace_id = str(uuid.uuid4())
         initial_state = MultiAgentState.create(
             messages=[{"role": "user", "content": message}],
             trace_id=trace_id, user_id=user_id)
 
+        full_text = ""
         try:
             async with asyncio.timeout(120):
                 async for event in self._graph.astream_events(
@@ -318,10 +337,16 @@ class MultiAgentFinanceAgent:
                     elif kind == "on_chat_model_stream":
                         chunk = event["data"]["chunk"]
                         if hasattr(chunk, "content") and chunk.content:
+                            full_text += str(chunk.content)
                             yield {"data": str(chunk.content)}
 
         except asyncio.TimeoutError:
             yield {"event": "error", "data": "AI 响应超时，请简化问题或稍后重试"}
+
+        if full_text:
+            if check_amount_hallucination(full_text, []):
+                yield {"data": "\n\n⚠️ 注意：回复中的金额可能不准确，请核实。"}
+            memory.add({"role": "assistant", "content": full_text})
 
     @property
     def is_initialized(self) -> bool:
