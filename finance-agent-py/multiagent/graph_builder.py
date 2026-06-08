@@ -28,7 +28,4 @@ def build_multi_agent_graph(supervisor_llm=None, bookkeeper_agent=None, analyst_
 
     graph.set_entry_point("supervisor")
 
-    graph.add_edge("bookkeeper", "supervisor")
-    graph.add_edge("analyst", "supervisor")
-
-    return graph.compile()
+    return graph.compile(recursion_limit=5)

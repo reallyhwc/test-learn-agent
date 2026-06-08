@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import MagicMock, AsyncMock, patch
 from langgraph.types import Command
 
-from .supervisor_node import build_supervisor_node, _keyword_classify, CLASSIFY_PROMPT
+from .supervisor_node import build_supervisor_node, _keyword_classify, _get_classify_prompt
 from .bookkeeper_node import build_bookkeeper_node, WRITE_TOOLS
 from .analyst_node import build_analyst_node
 from .state import MultiAgentState
@@ -55,10 +55,10 @@ class TestSupervisorNode:
     """supervisor_node 函数测试。"""
 
     def test_classify_prompt_contains_categories(self):
-        assert "booking" in CLASSIFY_PROMPT
-        assert "analysis" in CLASSIFY_PROMPT
-        assert "other" in CLASSIFY_PROMPT
-        assert "只返回分类名称" in CLASSIFY_PROMPT
+        prompt = _get_classify_prompt()
+        assert "booking" in prompt
+        assert "analysis" in prompt
+        assert "other" in prompt
 
     def test_empty_messages_routes_to_end(self):
         node = build_supervisor_node(llm=None)
@@ -169,7 +169,7 @@ class TestBookkeeperNode:
             {"role": "user", "content": "查询余额"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert len(msgs) == 1
         assert "占位" in msgs[0]["content"]
@@ -184,7 +184,7 @@ class TestBookkeeperNode:
             {"role": "user", "content": "查询余额"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert len(msgs) == 1
         assert "失败" in msgs[0]["content"]
@@ -201,14 +201,13 @@ class TestBookkeeperNode:
             {"role": "user", "content": "记一笔午餐30元"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert "已记录" in msgs[0]["content"]
 
     @pytest.mark.asyncio
     async def test_add_transaction_triggers_pending_confirmation(self):
         mock_agent = AsyncMock()
-        # 模拟 agent 返回的 tool_call 消息
         tool_call_msg = MagicMock()
         tool_call_msg.tool_calls = [{"name": "add_transaction", "args": {"amount": 30, "type": "EXPENSE", "category": "餐饮"}}]
         mock_agent.ainvoke.return_value = {"messages": [tool_call_msg]}
@@ -218,7 +217,7 @@ class TestBookkeeperNode:
             {"role": "user", "content": "记一笔午餐30元"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         assert "pending_confirmation" in cmd.update
         confirmation = cmd.update["pending_confirmation"]
         assert confirmation is not None
@@ -238,7 +237,7 @@ class TestBookkeeperNode:
             {"role": "user", "content": "查询余额"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         assert cmd.update.get("pending_confirmation") is None
 
     def test_write_tools_set_contains_add_transaction(self):
@@ -261,7 +260,7 @@ class TestAnalystNode:
             {"role": "user", "content": "本月花了多少钱"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert len(msgs) == 1
         assert "占位" in msgs[0]["content"]
@@ -276,7 +275,7 @@ class TestAnalystNode:
             {"role": "user", "content": "汇总支出"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert len(msgs) == 1
         assert "失败" in msgs[0]["content"]
@@ -293,7 +292,7 @@ class TestAnalystNode:
             {"role": "user", "content": "本月餐饮花了多少"}
         ])
         cmd = await node(state)
-        assert cmd.goto == "supervisor"
+        assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert "¥523.50" in msgs[0]["content"]
 

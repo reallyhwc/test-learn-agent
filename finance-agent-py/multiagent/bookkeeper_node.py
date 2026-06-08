@@ -20,7 +20,7 @@ def build_bookkeeper_node(agent=None, audit_callback_factory=None):
         messages = state.get("messages", [])
 
         if agent is None:
-            return Command(goto="supervisor", update={
+            return Command(goto="__end__", update={
                 "messages": [{"role": "assistant",
                               "content": "[Bookkeeper 占位] 记账功能待初始化"}]})
 
@@ -34,7 +34,7 @@ def build_bookkeeper_node(agent=None, audit_callback_factory=None):
             result = await agent.ainvoke({"messages": messages}, config=config)
         except Exception as e:
             logger.error("Bookkeeper 执行失败: %s", e)
-            return Command(goto="supervisor", update={
+            return Command(goto="__end__", update={
                 "messages": [{"role": "assistant", "content": "记账操作失败，请稍后重试。"}]})
 
         result_messages = result.get("messages", [])
@@ -43,7 +43,7 @@ def build_bookkeeper_node(agent=None, audit_callback_factory=None):
                 for tc in msg.tool_calls:
                     tool_name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
                     if tool_name in WRITE_TOOLS:
-                        return Command(goto="supervisor", update={
+                        return Command(goto="__end__", update={
                             "messages": result_messages,
                             "pending_confirmation": {
                                 "tool_name": tool_name,
@@ -51,6 +51,6 @@ def build_bookkeeper_node(agent=None, audit_callback_factory=None):
                             }
                         })
 
-        return Command(goto="supervisor", update={"messages": result_messages})
+        return Command(goto="__end__", update={"messages": result_messages})
 
     return bookkeeper_node

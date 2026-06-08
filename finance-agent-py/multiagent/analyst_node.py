@@ -18,7 +18,7 @@ def build_analyst_node(agent=None, audit_callback_factory=None):
         messages = state.get("messages", [])
 
         if agent is None:
-            return Command(goto="supervisor", update={
+            return Command(goto="__end__", update={
                 "messages": [{"role": "assistant",
                               "content": "[Analyst 占位] 分析功能待初始化"}]})
 
@@ -32,9 +32,9 @@ def build_analyst_node(agent=None, audit_callback_factory=None):
             result = await agent.ainvoke({"messages": messages}, config=config)
         except Exception as e:
             logger.error("Analyst 执行失败: %s", e)
-            return Command(goto="supervisor", update={
+            return Command(goto="__end__", update={
                 "messages": [{"role": "assistant", "content": "分析请求失败，请稍后重试。"}]})
 
-        return Command(goto="supervisor", update={"messages": result.get("messages", [])})
+        return Command(goto="__end__", update={"messages": result.get("messages", [])})
 
     return analyst_node
