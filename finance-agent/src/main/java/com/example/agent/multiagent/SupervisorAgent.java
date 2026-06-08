@@ -25,11 +25,12 @@ public class SupervisorAgent {
 
     static final int MAX_ROUNDS = 2;
 
-    public SupervisorAgent(java.util.Map<String, ChatClient.Builder> builders,
+    public SupervisorAgent(@org.springframework.beans.factory.annotation.Qualifier("supervisorChatClientBuilder")
+                           ChatClient.Builder supervisorBuilder,
                            BookkeeperAgent bookkeeper, AnalystAgent analyst,
                            com.example.agent.debug.LlmAuditAdvisor auditAdvisor,
                            PromptLoader promptLoader) {
-        this.classifyClient = builders.get("supervisorChatClientBuilder").build();
+        this.classifyClient = supervisorBuilder.build();
         this.bookkeeper = bookkeeper;
         this.analyst = analyst;
         this.auditAdvisor = auditAdvisor;

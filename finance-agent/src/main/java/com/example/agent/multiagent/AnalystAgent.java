@@ -16,9 +16,10 @@ public class AnalystAgent {
     private final ChatClient chatClient;
     private final PromptLoader promptLoader;
 
-    public AnalystAgent(java.util.Map<String, ChatClient.Builder> builders,
+    public AnalystAgent(@org.springframework.beans.factory.annotation.Qualifier("analystChatClientBuilder")
+                        ChatClient.Builder analystBuilder,
                         PromptLoader promptLoader) {
-        this.chatClient = builders.get("analystChatClientBuilder").build();
+        this.chatClient = analystBuilder.build();
         this.promptLoader = promptLoader;
     }
 

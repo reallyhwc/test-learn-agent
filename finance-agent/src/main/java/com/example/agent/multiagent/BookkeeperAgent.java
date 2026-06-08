@@ -16,9 +16,10 @@ public class BookkeeperAgent {
     private final ChatClient chatClient;
     private final PromptLoader promptLoader;
 
-    public BookkeeperAgent(java.util.Map<String, ChatClient.Builder> builders,
+    public BookkeeperAgent(@org.springframework.beans.factory.annotation.Qualifier("bookkeeperChatClientBuilder")
+                           ChatClient.Builder bookkeeperBuilder,
                            PromptLoader promptLoader) {
-        this.chatClient = builders.get("bookkeeperChatClientBuilder").build();
+        this.chatClient = bookkeeperBuilder.build();
         this.promptLoader = promptLoader;
     }
 

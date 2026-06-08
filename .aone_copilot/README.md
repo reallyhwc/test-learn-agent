@@ -27,6 +27,12 @@
     ├── done/
     ├── doing/
     └── backlog/
+
+.claude/agents/         # Claude Code 子 Agent 定义（YAML frontmatter + Markdown prompt）
+├── code-reviewer.md    # 代码审查（Read/Grep 只读）
+├── eval-runner.md      # Eval 评测执行器
+├── regression-test.md  # 回归测试执行器
+└── restart-services.md # 服务重启器
 ```
 
 ---
