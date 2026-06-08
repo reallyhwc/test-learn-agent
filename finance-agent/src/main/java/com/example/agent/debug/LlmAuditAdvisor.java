@@ -120,7 +120,7 @@ public class LlmAuditAdvisor implements BaseAdvisor {
             }
             ctx.put(CTX_MESSAGES, msgList);
             if (sysPrompt != null) {
-                ctx.put(CTX_SYSTEM_PROMPT, sysPrompt);
+                ctx.put(CTX_SYSTEM_PROMPT, truncateSystemPrompt(sysPrompt));
             }
             if (userMsg != null) {
                 ctx.put(CTX_USER_MESSAGE, userMsg);
@@ -185,6 +185,14 @@ public class LlmAuditAdvisor implements BaseAdvisor {
         }
 
         return response;
+    }
+
+    static final int MAX_SYSTEM_PROMPT_LENGTH = 200;
+
+    static String truncateSystemPrompt(String prompt) {
+        if (prompt == null) return null;
+        if (prompt.length() <= MAX_SYSTEM_PROMPT_LENGTH) return prompt;
+        return prompt.substring(0, MAX_SYSTEM_PROMPT_LENGTH) + "...[truncated, " + prompt.length() + " chars]";
     }
 
     /**

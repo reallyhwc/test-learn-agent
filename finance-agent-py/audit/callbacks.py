@@ -16,6 +16,16 @@ logger = logging.getLogger(__name__)
 AUDIT_DIR = Path(os.environ.get("AUDIT_LOG_DIR", "logs/llm-audit"))
 AUDIT_FILE = AUDIT_DIR / "llm-calls.jsonl"
 
+MAX_SYSTEM_PROMPT_LENGTH = 200
+
+
+def _truncate_system_prompt(prompt: str | None) -> str | None:
+    if prompt is None:
+        return None
+    if len(prompt) <= MAX_SYSTEM_PROMPT_LENGTH:
+        return prompt
+    return prompt[:MAX_SYSTEM_PROMPT_LENGTH] + f"...[truncated, {len(prompt)} chars]"
+
 
 class LlmAuditCallback(BaseCallbackHandler):
     """LangChain callback，拦截每次 LLM 调用并写入 JSONL 审计记录。
@@ -124,7 +134,7 @@ class LlmAuditCallback(BaseCallbackHandler):
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "durationMs": duration_ms,
             "request": {
-                "systemPrompt": system_prompt,
+                "systemPrompt": _truncate_system_prompt(system_prompt),
                 "userMessage": user_message,
                 "messages": self._input_messages,
                 "tools": [],

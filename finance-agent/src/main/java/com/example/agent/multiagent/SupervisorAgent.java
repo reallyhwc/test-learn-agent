@@ -69,7 +69,8 @@ public class SupervisorAgent {
                     traceId, "supervisor", "classify", userId,
                     java.time.Instant.now(), durationNs / 1_000_000,
                     new com.example.agent.debug.LlmCallRecord.RequestInfo(
-                            getClassifyPrompt(), userMessage, java.util.List.of(), java.util.List.of()),
+                            com.example.agent.debug.LlmAuditAdvisor.truncateSystemPrompt(getClassifyPrompt()),
+                            userMessage, java.util.List.of(), java.util.List.of()),
                     new com.example.agent.debug.LlmCallRecord.ResponseInfo(
                             result != null ? result.trim() : "", java.util.List.of(),
                             chatResponse.getResult().getMetadata() != null
