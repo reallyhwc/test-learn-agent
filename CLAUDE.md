@@ -28,16 +28,25 @@ Frontend (:5173) → Agent → MCP Server → Backend (:8080)
 
 ### 项目级子 Agent（开发工具层）
 
-除了运行时服务，项目通过 `.claude/agents/` 定义了 4 个 **Claude Code 子 Agent**，用于自动化开发流程：
+除了运行时服务，项目通过 `.claude/agents/` 定义了 5 个 **Claude Code 子 Agent**，用于自动化开发流程：
 
 | Agent | 触发词 | 职责 |
 |-------|--------|------|
 | `code-reviewer` | "审查 / review 代码" | 按 CLAUDE.md 规范审查代码质量 |
-| `eval-runner` | "跑 eval / 评估" | 运行 Golden Dataset Eval 测试 |
+| `eval-runner` | "跑 eval / 评估" | 运行 Java 栈 Golden Dataset Eval 测试 |
+| `eval-runner-py` | "跑 Python eval" | 运行 Python 栈 Golden Dataset Eval 测试 |
 | `regression-test` | "回归测试" | 多场景 AI Agent 回归测试 |
 | `restart-services` | "重启 / restart" | 一键杀进程 → 启动全部服务 → 健康检查 |
 
 子 Agent 在独立进程中运行，不占用主对话上下文。通过 YAML frontmatter 配置工具集、模型和权限。
+
+此外，项目通过 `.claude/skills/pre-merge-pipeline/` 定义了一个**主对话级编排 Skill**：
+
+| Skill | 触发词 | 职责 |
+|-------|--------|------|
+| `pre-merge-pipeline` | "上线前检查 / pre-merge / 跑流水线" | 编排子 Agent 执行上线前全套检查流水线（restart → eval ∥ regression → review） |
+
+Pipeline Skill 在主对话上下文中运行，可调度子 Agent 并行执行，通过 GATE_SIGNAL 做阶段间 gate 判断。
 
 ## Prerequisites
 
@@ -145,9 +154,11 @@ Supported providers: DeepSeek, OpenAI, 通义千问, Groq, Moonshot, SiliconFlow
   - `skills/csv-migration/` — CSV Schema 升级
 - **[`.claude/agents/`](./.claude/agents/)** — 项目级 Claude Code 子 Agent（独立上下文执行）
   - `code-reviewer.md` — 代码审查专家，对照 CLAUDE.md 规范审查代码质量
-  - `eval-runner.md` — Eval 评估执行器，运行 Golden Dataset 测试并输出报告
+  - `eval-runner.md` — Java 栈 Eval 评估执行器，运行 Golden Dataset 测试并输出报告
+  - `eval-runner-py.md` — Python 栈 Eval 评估执行器，运行 Python Golden Dataset 测试
   - `regression-test.md` — AI Agent 回归测试，多场景 × 多轮次验证
   - `restart-services.md` — 一键重启全部服务，杀进程 → 启动 → 健康检查闭环
+- **[`.claude/skills/pre-merge-pipeline/`](./.claude/skills/pre-merge-pipeline/)** — 上线前检查流水线 Skill（主对话级编排）
 - **[`docs/roadmap/`](./docs/roadmap/README.md)** — 5 篇技术演进方向（Guardrails / Evals / HITL / Prompt 管理 / Multi-Agent）
 - **[`docs/troubleshooting/`](./docs/troubleshooting/README.md)** — 失败模式手册
 - **[`evals/`](./evals/README.md)** — Agent 输出质量评估（Golden Dataset + Eval Runner）。改 Prompt 后必跑

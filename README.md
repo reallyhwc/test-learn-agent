@@ -459,11 +459,14 @@ cd finance-frontend && npm run dev                     # :5173
 │   └── utils/                         api.js, streamParser.js, markdown.js
 │
 ├── .claude/
-│   └── agents/                         Claude Code 子 Agent（项目级）
-│       ├── code-reviewer.md            代码审查专家
-│       ├── eval-runner.md              Eval 评估执行器
-│       ├── regression-test.md          AI Agent 回归测试
-│       └── restart-services.md         一键服务重启器
+│   ├── agents/                         Claude Code 子 Agent（项目级）
+│   │   ├── code-reviewer.md            代码审查专家
+│   │   ├── eval-runner.md              Java Eval 评估执行器
+│   │   ├── eval-runner-py.md           Python Eval 评估执行器
+│   │   ├── regression-test.md          AI Agent 回归测试
+│   │   └── restart-services.md         一键服务重启器
+│   └── skills/
+│       └── pre-merge-pipeline/         上线前检查流水线 Skill
 │
 ├── .github/workflows/ci.yml           GitHub Actions CI
 ├── .env.example                       LLM 配置模板
@@ -488,7 +491,7 @@ graph TB
         CLAUDE["CLAUDE.md<br/>全局约束入口<br/>Testing / Anti-Patterns / Tech Debt"]
         RULES["Rules 编码规范<br/>8 份规范文档<br/>命名 / 分层 / 异常 / DTO / 测试 / 前端 / MCP / CSV"]
         SKILLS["Skills 操作清单<br/>3 个标准流程<br/>add-model-field / add-mcp-tool / csv-migration"]
-        AGENTS["Agents 子 Agent<br/>3 个项目级 Agent<br/>code-reviewer / eval-runner / regression-test"]
+        AGENTS["Agents 子 Agent<br/>4 个项目级 Agent + 1 个编排 Skill<br/>code-reviewer / eval-runner / eval-runner-py / regression-test<br/>+ pre-merge-pipeline Skill"]
     end
 
     AI["🤖 AI 编程工具"]
@@ -530,7 +533,9 @@ graph TB
 │       ├── implementation_plan.md   # 技术实施计划
 │       └── task.md                  # 任务进度清单
 │
-└── ../../.claude/agents/           # Claude Code 子 Agent（项目级）
+└── ../../.claude/
+    ├── agents/                     # Claude Code 子 Agent（项目级）
+    └── skills/                     # Claude Code 编排 Skill（项目级）
 ```
 
 ### 核心机制
@@ -572,15 +577,24 @@ CLAUDE.md 中内置了从实际踩坑中总结的防御规则：
 | 10 | 前端表单/列表/图表 | finance-frontend |
 | 11 | 测试修复 + 编译验证 | 全部模块 |
 
-#### 4. Agents 子 Agent 调度
+#### 4. Agents 子 Agent 调度与 Pipeline 编排
 
-在 Skills 之上，项目定义了 3 个**项目级 Claude Code 子 Agent**（`.claude/agents/*.md`），每个 Agent 拥有独立的工具集和运行上下文，通过 YAML frontmatter 声明式配置：
+在 Skills 之上，项目定义了 4 个**项目级 Claude Code 子 Agent**（`.claude/agents/*.md`）和 1 个**编排 Skill**（`.claude/skills/`），每个 Agent 拥有独立的工具集和运行上下文，通过 YAML frontmatter 声明式配置：
 
 | Agent | 触发场景 | 工具 | 职责 |
 |-------|---------|------|------|
 | **code-reviewer** | 用户提到"review / 审查 / 检查代码" | Read, Grep, Glob, Bash | 对照 CLAUDE.md 规范审查代码：模块依赖顺序、双栈策略、反模式检测、测试覆盖、安全性 |
-| **eval-runner** | 用户提到"跑 eval / 评估 / golden dataset" | Bash, Read, Grep | 运行 Golden Dataset 评估测试，聚合通过率和失败 case，输出结构化报告 |
+| **eval-runner** | 用户提到"跑 eval / 评估 / golden dataset" | Bash, Read, Grep | 运行 Java 栈 Golden Dataset 评估测试，聚合通过率和失败 case，输出结构化报告 |
+| **eval-runner-py** | 用户提到"跑 Python eval / Python 评估" | Bash, Read, Grep | 运行 Python 栈 Golden Dataset 评估测试，与 eval-runner 结构对称 |
 | **regression-test** | 用户提到"回归测试 / regression test" | Bash, Read | 执行 `scripts/regression-test.py`，多场景 × 多轮次的 AI Agent 回归测试，验证审计日志质量 |
+
+**Pipeline 编排 Skill：**
+
+| Skill | 触发场景 | 运行环境 | 职责 |
+|-------|---------|---------|------|
+| **pre-merge-pipeline** | "上线前检查 / pre-merge / 跑流水线" | 主对话上下文 | 编排子 Agent 执行上线前全套检查流水线，支持并行调度和 gate 判断 |
+
+所有子 Agent 在报告末尾输出标准化的 **GATE_SIGNAL**（HTML 注释中嵌入 JSON），供 pipeline 编排层程序化解析和做阶段间通过/失败判断。
 
 **Skills vs Agents 的区别：**
 
@@ -596,25 +610,40 @@ CLAUDE.md 中内置了从实际踩坑中总结的防御规则：
 graph LR
     subgraph "主对话 Agent"
         MAIN["主 Agent<br/>理解意图 · 协调调度"]
+        PIPE["pre-merge-pipeline<br/>流水线编排 Skill"]
     end
 
     subgraph "项目级子 Agent"
+        RS["restart-services<br/>服务重启"]
         CR["code-reviewer<br/>代码审查"]
-        EV["eval-runner<br/>Eval 评估"]
+        EV["eval-runner<br/>Java Eval"]
+        EVP["eval-runner-py<br/>Python Eval"]
         RT["regression-test<br/>回归测试"]
     end
 
-    MAIN -->|"审查代码"| CR
-    MAIN -->|"跑 Eval"| EV
-    MAIN -->|"回归测试"| RT
+    MAIN -->|"上线前检查"| PIPE
+    PIPE -->|"Stage 1"| RS
+    PIPE -->|"Stage 2 并行"| EV
+    PIPE -->|"Stage 2 并行"| EVP
+    PIPE -->|"Stage 2 并行"| RT
+    PIPE -->|"Stage 3"| CR
 
-    CR -->|"审查报告"| MAIN
-    EV -->|"评估报告"| MAIN
-    RT -->|"测试报告"| MAIN
+    RS -->|"GATE_SIGNAL"| PIPE
+    EV -->|"GATE_SIGNAL"| PIPE
+    EVP -->|"GATE_SIGNAL"| PIPE
+    RT -->|"GATE_SIGNAL"| PIPE
+    CR -->|"GATE_SIGNAL"| PIPE
+
+    MAIN -->|"直接调度"| CR
+    MAIN -->|"直接调度"| EV
+    MAIN -->|"直接调度"| RT
 
     style MAIN fill:#7c4dff,color:#fff
+    style PIPE fill:#9c27b0,color:#fff
+    style RS fill:#e74c3c,color:#fff
     style CR fill:#ff9800,color:#fff
     style EV fill:#4caf50,color:#fff
+    style EVP fill:#00bcd4,color:#fff
     style RT fill:#2196f3,color:#fff
 ```
 
