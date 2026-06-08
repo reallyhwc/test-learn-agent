@@ -82,5 +82,5 @@ class PromptLoader:
                 return path.read_text("utf-8").strip()
         except Exception as e:
             logger.warning("读取 Prompt 文件失败: %s — %s", path, e)
-        logger.debug("Prompt 文件未找到: %s", path)
+        logger.warning("Prompt 文件未找到: %s", path)
         return ""

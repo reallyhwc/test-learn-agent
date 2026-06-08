@@ -20,6 +20,8 @@ import org.springframework.context.annotation.Configuration;
  * supervisorChatClientBuilder 不注入（SupervisorAgent 手动 writeRecord）。
  */
 @Configuration
+@org.springframework.boot.autoconfigure.condition.ConditionalOnProperty(
+        name = "multi-agent.enabled", havingValue = "true", matchIfMissing = true)
 public class MultiAgentConfig {
 
     /** 记账类工具：add_transaction, list_accounts, query_balance */

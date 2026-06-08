@@ -81,7 +81,7 @@ async def list_transactions(user_id: str, filters: str) -> Any:
 
     filter_map = _parse_filters(filters)
     limit = int(filter_map.pop("limit", DEFAULT_PAGE_SIZE))
-    if limit <= 0 or limit > 500:
+    if limit <= 0 or limit > 200:
         limit = DEFAULT_PAGE_SIZE
     params: dict[str, Any] = {"userId": user_id, "pageSize": limit}
     for key in ("startDate", "endDate", "category", "subCategory", "type", "accountId"):

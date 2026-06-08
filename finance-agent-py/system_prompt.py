@@ -22,11 +22,17 @@ _account_circuit_breaker = SimpleCircuitBreaker("account-context", 3, 30_000)
 _PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
+_prompt_loader: PromptLoader | None = None
+
+
 def _get_prompt_loader() -> PromptLoader:
-    """惰性创建 PromptLoader（读取 config.yaml 中的版本）。"""
-    config = load_config()
-    version = config.get("prompt", {}).get("version", "v1")
-    return PromptLoader(str(_PROMPTS_DIR), version)
+    """惰性创建 PromptLoader 单例（读取 config.yaml 中的版本）。"""
+    global _prompt_loader
+    if _prompt_loader is None:
+        config = load_config()
+        version = config.get("prompt", {}).get("version", "v1")
+        _prompt_loader = PromptLoader(str(_PROMPTS_DIR), version)
+    return _prompt_loader
 
 
 def _get_backend_url() -> str:

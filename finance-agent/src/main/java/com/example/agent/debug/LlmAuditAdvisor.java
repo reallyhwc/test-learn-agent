@@ -66,6 +66,7 @@ public class LlmAuditAdvisor implements BaseAdvisor {
 
     private final Path logDir;
     private final boolean enabled;
+    private final java.util.concurrent.locks.ReentrantLock writeLock = new java.util.concurrent.locks.ReentrantLock();
 
     public LlmAuditAdvisor(
             @Value("${finance.audit.log-dir:logs/llm-audit}") String logDirPath,
@@ -202,6 +203,7 @@ public class LlmAuditAdvisor implements BaseAdvisor {
         if (!enabled) {
             return;
         }
+        writeLock.lock();
         try {
             String today = LocalDate.now().format(FILE_DATE_FMT);
             Path file = logDir.resolve("llm-calls-" + today + ".jsonl");
@@ -210,6 +212,8 @@ public class LlmAuditAdvisor implements BaseAdvisor {
                     StandardOpenOption.CREATE, StandardOpenOption.APPEND);
         } catch (IOException e) {
             log.debug("写入审计记录失败: {}", e.getMessage());
+        } finally {
+            writeLock.unlock();
         }
     }
 

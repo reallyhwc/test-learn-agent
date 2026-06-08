@@ -2,6 +2,7 @@
 import json
 import logging
 import os
+import threading
 import time
 import uuid
 from datetime import datetime, timezone
@@ -15,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 AUDIT_DIR = Path(os.environ.get("AUDIT_LOG_DIR", "logs/llm-audit"))
 AUDIT_FILE = AUDIT_DIR / "llm-calls.jsonl"
+_write_lock = threading.Lock()
 
 MAX_SYSTEM_PROMPT_LENGTH = 200
 
@@ -180,11 +182,12 @@ class LlmAuditCallback(BaseCallbackHandler):
         }
 
     def _write(self, record: dict) -> None:
-        try:
-            AUDIT_DIR.mkdir(parents=True, exist_ok=True)
-            with open(AUDIT_FILE, "a") as f:
-                f.write(
-                    json.dumps(record, ensure_ascii=False, default=str) + "\n"
-                )
-        except Exception as e:
-            logger.debug("写入审计记录失败: %s", e)
+        with _write_lock:
+            try:
+                AUDIT_DIR.mkdir(parents=True, exist_ok=True)
+                with open(AUDIT_FILE, "a") as f:
+                    f.write(
+                        json.dumps(record, ensure_ascii=False, default=str) + "\n"
+                    )
+            except Exception as e:
+                logger.debug("写入审计记录失败: %s", e)

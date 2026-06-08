@@ -94,7 +94,7 @@ public class PromptLoader {
         } catch (IOException e) {
             log.warn("读取 Prompt 文件失败: {}", path, e);
         }
-        log.debug("Prompt 文件未找到: {}", path);
+        log.warn("Prompt 文件未找到: {}", path);
         return "";
     }
 }

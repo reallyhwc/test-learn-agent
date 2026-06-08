@@ -11,15 +11,23 @@ logger = logging.getLogger(__name__)
 
 # 项目根 prompts/ 目录 — supervise_node 在 multiagent/ 下，需向上 3 层到项目根
 _PROMPTS_DIR = Path(__file__).parent.parent.parent / "prompts"
+_prompt_loader: PromptLoader | None = None
+
+
+def _get_prompt_loader() -> PromptLoader:
+    """惰性创建 PromptLoader 单例。"""
+    global _prompt_loader
+    if _prompt_loader is None:
+        from config_loader import load_config
+        config = load_config()
+        version = config.get("prompt", {}).get("version", "v1")
+        _prompt_loader = PromptLoader(str(_PROMPTS_DIR), version)
+    return _prompt_loader
 
 
 def _get_classify_prompt() -> str:
     """从 prompts/ 加载 Supervisor 分类提示。"""
-    from config_loader import load_config
-    config = load_config()
-    version = config.get("prompt", {}).get("version", "v1")
-    loader = PromptLoader(str(_PROMPTS_DIR), version)
-    return loader.assemble("supervisor", {})
+    return _get_prompt_loader().assemble("supervisor", {})
 
 
 def build_supervisor_node(llm=None, audit_callback_factory=None):
@@ -31,7 +39,7 @@ def build_supervisor_node(llm=None, audit_callback_factory=None):
         audit_callback_factory: callable(trace_id, user_id) -> LlmAuditCallback。
     """
 
-    def supervisor_node(state: dict) -> Command:
+    async def supervisor_node(state: dict) -> Command:
         messages = state.get("messages", [])
         if not messages:
             return Command(goto="__end__")
@@ -44,14 +52,13 @@ def build_supervisor_node(llm=None, audit_callback_factory=None):
         trace_id = state.get("trace_id", "unknown")
         user_id = state.get("user_id", "unknown")
 
-        # 如果有 LLM，使用 LLM 分类；否则用关键词匹配
         if llm is not None:
             try:
                 config = {}
                 if audit_callback_factory:
                     callback = audit_callback_factory(trace_id, "supervisor", "classify", user_id)
                     config = {"callbacks": [callback]}
-                response = llm.invoke([
+                response = await llm.ainvoke([
                     SystemMessage(content=_get_classify_prompt()),
                     {"role": "user", "content": last_user_msg},
                 ], config=config)

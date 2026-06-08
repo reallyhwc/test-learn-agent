@@ -60,98 +60,106 @@ class TestSupervisorNode:
         assert "analysis" in prompt
         assert "other" in prompt
 
-    def test_empty_messages_routes_to_end(self):
+    @pytest.mark.asyncio
+    async def test_empty_messages_routes_to_end(self):
         node = build_supervisor_node(llm=None)
         state = MultiAgentState.create(messages=[])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "__end__"
 
-    def test_no_user_messages_routes_to_end(self):
+    @pytest.mark.asyncio
+    async def test_no_user_messages_routes_to_end(self):
         node = build_supervisor_node(llm=None)
         state = MultiAgentState.create(messages=[
             {"role": "assistant", "content": "有什么可以帮您的？"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "__end__"
 
-    def test_keyword_booking_routes_to_bookkeeper(self):
+    @pytest.mark.asyncio
+    async def test_keyword_booking_routes_to_bookkeeper(self):
         node = build_supervisor_node(llm=None)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "帮我记一笔午餐30元"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "bookkeeper"
         assert cmd.update["next_agent"] == "bookkeeper"
 
-    def test_keyword_analysis_routes_to_analyst(self):
+    @pytest.mark.asyncio
+    async def test_keyword_analysis_routes_to_analyst(self):
         node = build_supervisor_node(llm=None)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "本月花了多少钱"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "analyst"
         assert cmd.update["next_agent"] == "analyst"
 
-    def test_keyword_other_routes_to_end_with_reply(self):
+    @pytest.mark.asyncio
+    async def test_keyword_other_routes_to_end_with_reply(self):
         node = build_supervisor_node(llm=None)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "帮我写诗"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert len(msgs) == 1
         assert "记账" in msgs[0]["content"]
 
-    def test_llm_classify_booking_routes_to_bookkeeper(self):
-        mock_llm = MagicMock()
+    @pytest.mark.asyncio
+    async def test_llm_classify_booking_routes_to_bookkeeper(self):
+        mock_llm = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = "booking"
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke.return_value = mock_response
 
         node = build_supervisor_node(llm=mock_llm)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "记录一笔支出"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "bookkeeper"
 
-    def test_llm_classify_analysis_routes_to_analyst(self):
-        mock_llm = MagicMock()
+    @pytest.mark.asyncio
+    async def test_llm_classify_analysis_routes_to_analyst(self):
+        mock_llm = AsyncMock()
         mock_response = MagicMock()
         mock_response.content = "analysis"
-        mock_llm.invoke.return_value = mock_response
+        mock_llm.ainvoke.return_value = mock_response
 
         node = build_supervisor_node(llm=mock_llm)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "汇总本月支出"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "analyst"
 
-    def test_llm_error_falls_back_to_end_with_error_msg(self):
-        mock_llm = MagicMock()
-        mock_llm.invoke.side_effect = RuntimeError("LLM timeout")
+    @pytest.mark.asyncio
+    async def test_llm_error_falls_back_to_end_with_error_msg(self):
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.side_effect = RuntimeError("LLM timeout")
 
         node = build_supervisor_node(llm=mock_llm)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "查询余额"}
         ])
-        cmd = node(state)
+        cmd = await node(state)
         assert cmd.goto == "__end__"
         msgs = cmd.update.get("messages", [])
         assert len(msgs) == 1
         assert "抱歉" in msgs[0]["content"]
 
-    def test_uses_last_user_message_only(self):
+    @pytest.mark.asyncio
+    async def test_uses_last_user_message_only(self):
         node = build_supervisor_node(llm=None)
         state = MultiAgentState.create(messages=[
             {"role": "user", "content": "你好"},
             {"role": "assistant", "content": "你好！"},
             {"role": "user", "content": "记一笔午餐"},
         ])
-        cmd = node(state)
-        # 最后一条用户消息是"记一笔午餐" → booking
+        cmd = await node(state)
         assert cmd.goto == "bookkeeper"
 
 
