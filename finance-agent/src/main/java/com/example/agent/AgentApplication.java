@@ -2,6 +2,7 @@ package com.example.agent;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.io.FileInputStream;
 import java.io.InputStream;
@@ -25,6 +26,7 @@ import java.util.Properties;
  * @see com.example.agent.context.AccountContextBuilder — 账户上下文注入
  */
 @SpringBootApplication
+@EnableScheduling
 public class AgentApplication {
     public static void main(String[] args) {
         loadDotEnv();
