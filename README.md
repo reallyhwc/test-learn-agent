@@ -462,7 +462,8 @@ cd finance-frontend && npm run dev                     # :5173
 │   └── agents/                         Claude Code 子 Agent（项目级）
 │       ├── code-reviewer.md            代码审查专家
 │       ├── eval-runner.md              Eval 评估执行器
-│       └── regression-test.md          AI Agent 回归测试
+│       ├── regression-test.md          AI Agent 回归测试
+│       └── restart-services.md         一键服务重启器
 │
 ├── .github/workflows/ci.yml           GitHub Actions CI
 ├── .env.example                       LLM 配置模板
@@ -650,7 +651,7 @@ AI: 已为您记录：支出 ¥50.00，分类：餐饮，备注：午餐。
 ## 测试体系
 
 ```
-全栈测试覆盖: 后端 ~46 用例 + 前端 131 用例 + MCP ~16 用例 + Agent Java 111 用例 + Python 73 用例 ≈ 377 用例
+全栈测试覆盖: 后端 ~46 用例 + 前端 131 用例 + MCP ~16 用例 + Agent Java 139 用例 + Python 75 用例 ≈ 407 用例
 ```
 
 | 层 | 框架 | 覆盖范围 |
@@ -680,10 +681,10 @@ cd finance-frontend && npx vitest run
 cd finance-backend && ./mvnw verify
 cd finance-mcp-server && ./mvnw verify
 
-# Java Agent + Multi-Agent + Guardrails (111 用例)
+# Java Agent + Multi-Agent + Guardrails (139 用例)
 cd finance-agent && ./mvnw test
 
-# Python Agent + Multi-Agent + Guardrails (73 用例)
+# Python Agent + Multi-Agent + Guardrails (75 用例)
 cd finance-agent-py && python -m pytest -v
 
 # Eval 评估（需 LLM_API_KEY + 启动 backend/mcp-server）
@@ -704,11 +705,8 @@ graph LR
         G["01 Guardrails<br/>三层防护栏"]
         E["02 Evals<br/>评估体系"]
         H["03 HITL<br/>人机协作"]
-        M["05 Multi-Agent<br/>多智能体协作"]
-    end
-
-    subgraph "下一步 🔲"
         P["04 Prompt<br/>版本管理"]
+        M["05 Multi-Agent<br/>多智能体协作"]
     end
 
     G -->|"有了防护才能<br/>安全地自动评估"| E
@@ -719,8 +717,8 @@ graph LR
     style G fill:#4caf50,color:#fff
     style E fill:#4caf50,color:#fff
     style H fill:#4caf50,color:#fff
+    style P fill:#4caf50,color:#fff
     style M fill:#4caf50,color:#fff
-    style P fill:#ff9800,color:#fff
 ```
 
 ### 当前能力版图
@@ -728,17 +726,18 @@ graph LR
 ```
 已实现 ✅                              待实现 🔲
 ─────────────                        ─────────────
-✅ Agent 基础 (Java/Python 双栈)       🔲 Prompt 版本管理
-✅ MCP 协议 (Java/Python 双栈)         🔲 RAG 检索增强
+✅ Agent 基础 (Java/Python 双栈)       🔲 RAG 检索增强
+✅ MCP 协议 (Java/Python 双栈)         🔲 结构化输出
 ✅ SSE 流式输出                        🔲 结构化输出
 ✅ 对话记忆 (max 20 轮)                🔲 可观测性仪表盘
-✅ System Prompt 决策规则              🔲 本地模型支持
+✅ Prompt 版本管理 (PromptLoader)       🔲 本地模型支持
+✅ System Prompt 决策规则              🔲 LLM Judge 评估
 ✅ 熔断器 + 超时
 ✅ Guardrails 三层防护
 ✅ Evals 评估体系 (19 条 Golden Dataset)
 ✅ Human-in-the-Loop (写操作确认)
 ✅ Multi-Agent 协作 (Supervisor + Bookkeeper + Analyst)
-✅ 全栈测试体系 (~377 用例)
+✅ 全栈测试体系 (~407 用例)
 ✅ AI Coding Harness
 ✅ Java/Python 双栈切换
 ```
@@ -920,46 +919,49 @@ sequenceDiagram
 
 ---
 
-### 04 Prompt 版本管理 — 🔲 远期
+### 04 Prompt 版本管理 — ✅ 已完成
 
-> **优先级：★★★☆☆ · 状态：设计完成，待实施**
+> **优先级：★★★☆☆ · 状态：已完成（2026-06）**
 > **一句话理解**：把 Prompt 从代码里抽出来，当成独立的"配置文件"管理——可以版本化、A/B 测试、回滚。
 
 #### 解决的问题
 
-当前 System Prompt 硬编码在 Java/Python 代码中。改一个措辞需要：改代码 → 编译 → 重启。而且 Java 和 Python 各维护一份，容易不同步。
+System Prompt 硬编码在 Java/Python 代码中。改一个措辞需要：改代码 → 编译 → 重启。而且 Java 和 Python 各维护一份，容易不同步。
 
-#### 目标架构
+#### 已实现的架构
 
 ```
-当前：
-  ChatController.java → buildSystemPrompt() → 巨大字符串
-  system_prompt.py    → SYSTEM_PROMPT_TEMPLATE → 巨大字符串
+prompts/
+├── v1/                     # 版本 1（当前生产）
+│   ├── single-agent/       # 单 Agent 模式
+│   │   ├── system.md
+│   │   ├── tool-rules.md
+│   │   └── response-format.md
+│   ├── supervisor/         # Multi-Agent: Supervisor
+│   │   └── classify.md
+│   ├── bookkeeper/         # Multi-Agent: 记账专员
+│   │   ├── system.md
+│   │   ├── tool-rules.md
+│   │   └── response-format.md
+│   └── analyst/            # Multi-Agent: 分析专员
+│       ├── system.md
+│       ├── tool-rules.md
+│       └── response-format.md
+└── shared/                 # 跨版本共享
+    ├── safety-rules.md     # 安全规则（防注入/防篡改）
+    └── category-system.md  # 分类体系
 
-目标：
-  prompts/
-  ├── v1.0/                 # 版本 1
-  │   ├── system.md         # 角色定义
-  │   ├── tool-rules.md     # 工具选择规则
-  │   └── response-format.md # 回复格式
-  ├── v2.0/                 # 版本 2 (改进)
-  │   └── ...
-  └── shared/               # 跨版本共享
-      └── safety-rules.md   # 安全规则
-
-  config.yaml:
-    prompt_version: v2.0    # 一行切换版本
+config.yaml / application.yml:
+  prompt.version: v1        # 一行切换版本
 ```
 
-#### 拆解实施计划（预估 ~16h）
+#### 已实现的关键文件
 
-| 步骤 | 内容 |
-|------|------|
-| 1 | 将当前 System Prompt 拆分为模块化 Markdown 文件 |
-| 2 | 实现 `PromptLoader`（Java + Python），从文件读取 → 拼装 → 注入运行时数据 |
-| 3 | `config.yaml` 新增 `prompt_version` 配置项 |
-| 4 | `metadata.yaml` 记录版本变更历史和 Eval 基准线 |
-| 5 | 与 Evals 集成：Prompt 文件变更时自动触发评估 |
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| **Java** | `PromptLoader.java` | 从文件读取 → 缓存 → 模板变量替换 → 拼装 System Prompt |
+| **Python** | `prompt_loader.py` | 对等实现，支持 `{{varName}}` 模板变量 |
+| **配置** | `application.yml` | `prompt.base-dir` + `prompt.version` |
 
 > 详细设计文档：[`docs/roadmap/04-prompt-engineering.md`](docs/roadmap/04-prompt-engineering.md)
 
@@ -1029,8 +1031,8 @@ Phase 2 ✅ 已完成 (2026-06)
 ├── Human-in-the-Loop → 写操作确认机制
 └── Multi-Agent 协作 → Supervisor + Bookkeeper + Analyst
 
-Phase 3 → 下一步
-└── Prompt 版本管理 → 每个 Agent 独立 Prompt 版本化
+Phase 3 ✅ 已完成 (2026-06)
+└── Prompt 版本管理 → PromptLoader + prompts/v1/ 模块化文件
 ```
 
 每个方向的详细设计文档（架构图、代码示例、投入产出分析、落地步骤）都在 [`docs/roadmap/`](docs/roadmap/) 目录中。

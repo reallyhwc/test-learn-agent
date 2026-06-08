@@ -126,6 +126,4 @@ cd finance-agent
 
 ## 不在本次范围（backlog）
 
-- CI 集成（GitHub Actions + PR Comment 准确率对比）
-- HTML 报告 / 趋势图
 - LLM Judge（用另一 LLM 给输出打分）
