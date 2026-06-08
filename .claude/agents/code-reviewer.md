@@ -123,3 +123,26 @@ grep -rc "@mcp.tool" finance-mcp-server-py/ --include="*.py"
 - 🔴 **严重**：违反模块依赖顺序、多模块不同步、双栈关键规则不同步、安全漏洞、缺少必要测试
 - 🟡 **建议**：命名不规范、缺少可选测试、注释不清晰、commit message 格式问题
 - ℹ️ **参考**：代码风格建议、性能优化建议
+
+### GATE_SIGNAL
+
+在审查报告的**最末尾**，追加一个 HTML 注释块，供上层 pipeline 编排使用：
+
+```
+<!-- GATE_SIGNAL
+{
+  "agent": "code-reviewer",
+  "status": "{pass 或 fail}",
+  "metrics": {
+    "critical": {🔴 严重问题数},
+    "warning": {🟡 建议数},
+    "info": {ℹ️ 参考数}
+  },
+  "blockers": [{fail 时列出每个严重问题，如 "Model 字段变更未同步 MCP Server"}],
+  "timestamp": "{ISO 8601 格式当前时间}"
+}
+-->
+```
+
+- 无 🔴 严重问题（critical == 0）→ `status: "pass"`，`blockers: []`
+- 存在 🔴 严重问题 → `status: "fail"`，`blockers` 列出每个严重问题描述

@@ -69,6 +69,30 @@ ls -t scripts/regression-reports/*.json 2>/dev/null | head -1
 **结论**: ✓ 全部通过 / ✗ 存在失败
 ```
 
+### GATE_SIGNAL
+
+在 Markdown 报告的**最末尾**，追加一个 HTML 注释块，供上层 pipeline 编排使用：
+
+```
+<!-- GATE_SIGNAL
+{
+  "agent": "regression-test",
+  "status": "{pass 或 fail}",
+  "metrics": {
+    "passRate": {passed/total 的浮点数},
+    "passed": {通过场景数},
+    "total": {总场景数},
+    "avgLatencyS": {平均响应时间秒}
+  },
+  "blockers": [{失败时列出失败场景，如 "单Agent-查余额: timeout"}],
+  "timestamp": "{ISO 8601 格式当前时间}"
+}
+-->
+```
+
+- 全部场景通过 → `status: "pass"`，`blockers: []`
+- 存在失败场景 → `status: "fail"`，`blockers` 列出每个失败场景的名称和 error
+
 如果 `audit_issues` 非空，逐条列出；若为空数组，显示 "正常"。
 
 如果有场景失败（status=fail），列出失败场景名称和 error 字段内容，并给出排查方向：

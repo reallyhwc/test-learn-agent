@@ -89,6 +89,29 @@ ls -t evals/reports/eval-java-*.json 2>/dev/null | head -1
 **结论**: ✓ 全部通过 / ✗ {n} 条失败
 ```
 
+### GATE_SIGNAL
+
+在 Markdown 报告的**最末尾**，追加一个 HTML 注释块，供上层 pipeline 编排使用：
+
+```
+<!-- GATE_SIGNAL
+{
+  "agent": "eval-runner",
+  "status": "{pass 或 fail}",
+  "metrics": {
+    "passRate": {passed/total 的浮点数，如 1.0},
+    "passed": {通过数},
+    "total": {总数}
+  },
+  "blockers": [{失败时列出每个失败 case，如 "tool_selection#3: 未调用 query_balance"}],
+  "timestamp": "{ISO 8601 格式当前时间}"
+}
+-->
+```
+
+- 全部通过（passRate == 1.0）→ `status: "pass"`，`blockers: []`
+- 存在失败 → `status: "fail"`，`blockers` 列出每个失败 case 的 `id: failReason`
+
 ## 可选：生成可视化报告
 
 ```bash

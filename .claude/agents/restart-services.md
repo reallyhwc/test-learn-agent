@@ -86,6 +86,28 @@ bash scripts/restart-all.sh --json 2>&1
 
 将故障原因和修复建议输出给主 Agent。
 
+### GATE_SIGNAL
+
+在 Markdown 报告的**最末尾**，追加一个 HTML 注释块，供上层 pipeline 编排使用：
+
+```
+<!-- GATE_SIGNAL
+{
+  "agent": "restart-services",
+  "status": "{pass 或 fail}",
+  "metrics": {
+    "servicesUp": {成功启动的服务数},
+    "servicesTotal": {总服务数}
+  },
+  "blockers": [{失败时列出具体服务名和原因，如 "Agent :8081 启动失败: JAVA_HOME 未设置"}],
+  "timestamp": "{ISO 8601 格式当前时间}"
+}
+-->
+```
+
+- 全部服务 UP → `status: "pass"`，`blockers: []`
+- 任一服务失败 → `status: "fail"`，`blockers` 列出每个失败服务的名称和原因
+
 ## 注意事项
 
 - 脚本会杀掉全部旧进程，确保干净启动
