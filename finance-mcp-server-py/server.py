@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+from decimal import Decimal, InvalidOperation
 from typing import Any
 
 import httpx
@@ -162,8 +163,8 @@ async def add_transaction(
     if not account_id:
         return "添加交易失败，账户ID不能为空"
     try:
-        amount_decimal = float(amount)
-    except (TypeError, ValueError):
+        amount_decimal = Decimal(str(amount))
+    except (TypeError, ValueError, InvalidOperation):
         return "添加交易失败，金额格式不正确"
     if amount_decimal <= 0:
         return "添加交易失败，金额必须大于0"

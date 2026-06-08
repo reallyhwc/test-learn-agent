@@ -69,6 +69,12 @@ class PromptLoader:
             for key, value in vars.items():
                 prompt = prompt.replace("{{" + key + "}}", value)
 
+        if "{{" in prompt:
+            import re
+            remaining = re.findall(r"\{\{(\w+)\}\}", prompt)
+            if remaining:
+                logger.warning("Prompt 中存在未替换的模板变量: %s", remaining)
+
         return prompt
 
     def clear_cache(self) -> None:

@@ -62,7 +62,7 @@ System Prompt 是 Agent 项目里**风险最高、约束最弱**的部分：
 ### C. 修改后
 
 9. [ ] **回归验证**：
-    - **首选**：跑 Eval 套件，看通过率有无下降
+    - **首选**：跑 Eval 套件，看通过率有无下降。也可直接调用 eval-runner 子 Agent（`.claude/agents/eval-runner.md`）自动执行。
       ```bash
       cd finance-agent && ./mvnw test -Dgroups=evals -DexcludedGroups= -Dtest=AgentEvalTest
       ```

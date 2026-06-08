@@ -1,7 +1,7 @@
 ---
 name: code-reviewer
 description: 项目代码审查专家。审查代码变更是否遵循 CLAUDE.md 规范、多模块同步、双栈策略和测试要求。用户提到"review"、"审查"、"检查代码"、"PR review"时自动触发。
-tools: Read, Grep, Glob, Bash
+tools: Read, Grep, Bash
 model: inherit
 permissionMode: default
 maxTurns: 25

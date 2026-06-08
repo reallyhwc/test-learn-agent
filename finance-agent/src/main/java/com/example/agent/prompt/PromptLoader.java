@@ -78,6 +78,14 @@ public class PromptLoader {
                 prompt = prompt.replace("{{" + entry.getKey() + "}}", entry.getValue());
             }
         }
+        if (prompt.contains("{{")) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("\\{\\{(\\w+)\\}\\}").matcher(prompt);
+            java.util.List<String> remaining = new java.util.ArrayList<>();
+            while (m.find()) remaining.add(m.group(1));
+            if (!remaining.isEmpty()) {
+                log.warn("Prompt 中存在未替换的模板变量: {}", remaining);
+            }
+        }
         return prompt;
     }
 
