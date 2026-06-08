@@ -79,7 +79,6 @@ public class ChatController {
     private final InputGuardrailAdvisor inputGuardrailAdvisor;
     private final ToolCallGuardrailAdvisor toolCallGuardrailAdvisor;
     private final OutputGuardrailAdvisor outputGuardrailAdvisor;
-    private final com.example.agent.debug.LlmInteractionLogger llmInteractionLogger;
     private final com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor;
     private final SupervisorAgent supervisorAgent;
     private final PromptLoader promptLoader;
@@ -93,7 +92,6 @@ public class ChatController {
                           InputGuardrailAdvisor inputGuardrailAdvisor,
                           ToolCallGuardrailAdvisor toolCallGuardrailAdvisor,
                           OutputGuardrailAdvisor outputGuardrailAdvisor,
-                          com.example.agent.debug.LlmInteractionLogger llmInteractionLogger,
                           com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor,
                           SupervisorAgent supervisorAgent,
                           PromptLoader promptLoader,
@@ -109,7 +107,6 @@ public class ChatController {
         this.inputGuardrailAdvisor = inputGuardrailAdvisor;
         this.toolCallGuardrailAdvisor = toolCallGuardrailAdvisor;
         this.outputGuardrailAdvisor = outputGuardrailAdvisor;
-        this.llmInteractionLogger = llmInteractionLogger;
         this.llmAuditAdvisor = llmAuditAdvisor;
         this.supervisorAgent = supervisorAgent;
         this.promptLoader = promptLoader;
