@@ -195,7 +195,7 @@ class MultiAgentFinanceAgent:
         from mcp import ClientSession
         from mcp.client.sse import sse_client
 
-        from .multiagent.graph_builder import build_multi_agent_graph
+        from multiagent.graph_builder import build_multi_agent_graph
 
         llm_config = get_llm_config()
         base_url = llm_config["base_url"].rstrip("/")
@@ -241,7 +241,7 @@ class MultiAgentFinanceAgent:
         self._analyst_agent = create_react_agent(analyst_llm, analyst_tools)
 
         # --- 构建 StateGraph ---
-        from .audit.callbacks import LlmAuditCallback
+        from audit.callbacks import LlmAuditCallback
 
         def audit_callback_factory(
             trace_id, agent_name, call_type, user_id
@@ -263,7 +263,7 @@ class MultiAgentFinanceAgent:
     async def chat(self, user_id: str, message: str) -> str:
         """同步对话。"""
         import uuid
-        from .multiagent.state import MultiAgentState
+        from multiagent.state import MultiAgentState
 
         if is_prompt_injection(message):
             return REJECTION_REPLY
@@ -290,7 +290,7 @@ class MultiAgentFinanceAgent:
     async def chat_stream(self, user_id: str, message: str):
         """流式对话 — 逐节点 yield SSE 事件 dict。"""
         import uuid
-        from .multiagent.state import MultiAgentState
+        from multiagent.state import MultiAgentState
 
         if is_prompt_injection(message):
             yield {"data": REJECTION_REPLY}
