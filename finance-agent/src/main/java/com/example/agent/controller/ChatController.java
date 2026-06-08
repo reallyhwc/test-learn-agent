@@ -393,9 +393,11 @@ public class ChatController {
                     .body(body);
         }
 
-        // 3. 获取 Specialist 的 ChatClient 和 Prompt
+        // 3. 获取 Specialist 的 ChatClient 和 Prompt（注入用户上下文）
         ChatClient specialistClient = supervisorAgent.getSpecialistClient(target);
-        String systemPrompt = supervisorAgent.getSpecialistPrompt(target);
+        String accountSummary = accountContextBuilder.buildSummary(userId);
+        String currentDate = java.time.LocalDate.now().toString();
+        String systemPrompt = supervisorAgent.getSpecialistPrompt(target, userId, accountSummary, currentDate);
         String agentLabel = target == AgentType.BOOKKEEPER ? "记账员" : "分析师";
         String agentName = target == AgentType.BOOKKEEPER ? "bookkeeper" : "analyst";
 

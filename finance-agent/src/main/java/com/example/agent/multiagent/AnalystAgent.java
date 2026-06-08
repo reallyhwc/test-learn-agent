@@ -22,9 +22,15 @@ public class AnalystAgent {
         this.promptLoader = promptLoader;
     }
 
-    /** 从 prompts/ 加载并拼装 System Prompt */
-    public String buildSystemPrompt() {
-        return promptLoader.assemble("analyst", java.util.Map.of());
+    /** 从 prompts/ 加载并拼装 System Prompt（含安全规则、账户上下文注入） */
+    public String buildSystemPrompt(String userId, String accountSummary, String currentDate) {
+        String safetyRules = promptLoader.loadShared("safety-rules");
+        return promptLoader.assemble("analyst",
+                java.util.Map.of(
+                        "userId", userId,
+                        "accountSummary", accountSummary != null ? accountSummary : "",
+                        "currentDate", currentDate,
+                        "safetyRules", safetyRules));
     }
 
     /**

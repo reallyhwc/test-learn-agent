@@ -107,12 +107,12 @@ public class SupervisorAgent {
     }
 
     /**
-     * 获取与 AgentType 对应的 System Prompt。
+     * 获取与 AgentType 对应的 System Prompt（注入用户上下文）。
      */
-    public String getSpecialistPrompt(AgentType type) {
+    public String getSpecialistPrompt(AgentType type, String userId, String accountSummary, String currentDate) {
         return switch (type) {
-            case BOOKKEEPER -> bookkeeper.buildSystemPrompt();
-            case ANALYST -> analyst.buildSystemPrompt();
+            case BOOKKEEPER -> bookkeeper.buildSystemPrompt(userId, accountSummary, currentDate);
+            case ANALYST -> analyst.buildSystemPrompt(userId, accountSummary, currentDate);
             case OTHER -> null;
         };
     }

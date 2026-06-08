@@ -22,11 +22,17 @@ public class BookkeeperAgent {
         this.promptLoader = promptLoader;
     }
 
-    /** 从 prompts/ 加载并拼装 System Prompt（含分类体系注入） */
-    public String buildSystemPrompt() {
+    /** 从 prompts/ 加载并拼装 System Prompt（含安全规则、账户上下文、分类体系注入） */
+    public String buildSystemPrompt(String userId, String accountSummary, String currentDate) {
         String categorySystem = promptLoader.loadShared("category-system");
+        String safetyRules = promptLoader.loadShared("safety-rules");
         return promptLoader.assemble("bookkeeper",
-                java.util.Map.of("categorySystem", categorySystem));
+                java.util.Map.of(
+                        "userId", userId,
+                        "accountSummary", accountSummary != null ? accountSummary : "",
+                        "currentDate", currentDate,
+                        "safetyRules", safetyRules,
+                        "categorySystem", categorySystem));
     }
 
     /**
