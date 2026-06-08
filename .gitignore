@@ -2,6 +2,7 @@
 .idea/
 .claude/*
 !.claude/agents/
+!.claude/skills/
 .env
 finance-backend/data/
 finance-agent/data/
