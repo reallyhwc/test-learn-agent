@@ -18,7 +18,7 @@ class SingleAgentEndpointTest extends ChatEndpointTestBase {
     void shouldReturnNonEmptyResponse() throws Exception {
         String json = mockMvc.perform(post("/api/chat")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"default\",\"message\":\"我的账户余额是多少？\"}"))
+                        .content(buildRequestBody("default", "我的账户余额是多少？")))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         assertThat(json).contains("reply");

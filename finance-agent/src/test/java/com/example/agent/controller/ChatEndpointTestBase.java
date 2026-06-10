@@ -12,6 +12,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
 import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.util.Map;
 import java.util.Properties;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
@@ -43,7 +46,9 @@ abstract class ChatEndpointTestBase {
                     }
                 });
                 return;
-            } catch (Exception ignored) {
+            } catch (FileNotFoundException ignored) {
+            } catch (IOException e) {
+                System.err.println("[ChatEndpointTestBase] 读取 .env 失败: " + e.getMessage());
             }
         }
     }
@@ -53,10 +58,14 @@ abstract class ChatEndpointTestBase {
 
     protected final ObjectMapper objectMapper = new ObjectMapper();
 
+    protected String buildRequestBody(String userId, String message) throws Exception {
+        return objectMapper.writeValueAsString(Map.of("userId", userId, "message", message));
+    }
+
     protected String chatAndGetReply(String userId, String message) throws Exception {
         String json = mockMvc.perform(post("/api/chat")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + userId + "\",\"message\":\"" + message + "\"}"))
+                        .content(buildRequestBody(userId, message)))
                 .andExpect(status().isOk())
                 .andReturn().getResponse().getContentAsString();
         return extractReply(json);
@@ -86,7 +95,7 @@ abstract class ChatEndpointTestBase {
     protected String streamAndGetRaw(String endpoint, String userId, String message) throws Exception {
         MvcResult mvcResult = mockMvc.perform(post(endpoint)
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"userId\":\"" + userId + "\",\"message\":\"" + message + "\"}"))
+                        .content(buildRequestBody(userId, message)))
                 .andExpect(request().asyncStarted())
                 .andReturn();
 
