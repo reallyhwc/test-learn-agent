@@ -1,8 +1,10 @@
 package com.example.finance.exception;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -33,6 +35,24 @@ public class GlobalExceptionHandler {
     public ResponseEntity<Map<String, Object>> handleUnsupportedOperation(UnsupportedOperationException e) {
         log.warn("不支持的操作: {}", e.getMessage());
         return buildResponse(HttpStatus.BAD_REQUEST, e.getMessage());
+    }
+
+    /**
+     * 处理请求体解析异常（JSON 格式错误、枚举值非法、请求体缺失等）。返回 400 Bad Request。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<Map<String, Object>> handleHttpMessageNotReadable(HttpMessageNotReadableException e) {
+        log.warn("请求体解析失败: {}", e.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "请求体格式错误");
+    }
+
+    /**
+     * 处理请求参数类型转换异常（如日期格式错误、数字格式错误）。返回 400 Bad Request。
+     */
+    @ExceptionHandler(TypeMismatchException.class)
+    public ResponseEntity<Map<String, Object>> handleTypeMismatch(TypeMismatchException e) {
+        log.warn("参数类型不匹配: {}", e.getMessage());
+        return buildResponse(HttpStatus.BAD_REQUEST, "参数类型错误");
     }
 
     /**

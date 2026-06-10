@@ -47,7 +47,7 @@ class AccountControllerTest {
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.id").isNumber())
                 .andExpect(jsonPath("$.name").value("测试卡"));
     }
@@ -86,7 +86,7 @@ class AccountControllerTest {
         mockMvc.perform(post("/api/accounts")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"name\":\"测试账户\",\"type\":\"BANK\",\"balance\":1000,\"userId\":\"zhangsan\"}"))
-                .andExpect(status().isOk())
+                .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.userId").value("zhangsan"));
     }
 }
