@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Properties;
 
@@ -101,6 +102,6 @@ abstract class ChatEndpointTestBase {
 
         return mockMvc.perform(asyncDispatch(mvcResult))
                 .andExpect(status().isOk())
-                .andReturn().getResponse().getContentAsString();
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
     }
 }
