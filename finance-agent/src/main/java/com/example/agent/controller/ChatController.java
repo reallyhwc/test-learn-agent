@@ -402,7 +402,7 @@ public class ChatController {
         Timer.Sample durationSample = agentMetrics.startTimer();
 
         var advisor = MessageChatMemoryAdvisor.builder(chatMemory)
-                .conversationId("multi:" + userId)
+                .conversationId("multi-" + userId)
                 .build();
 
         response.setBufferSize(0);
