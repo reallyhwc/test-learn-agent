@@ -174,6 +174,21 @@ ensure_npm_deps() {
     fi
 }
 
+# 确保 Python 依赖安装
+ensure_python_deps() {
+    local dir=$1
+    if [ -d "$dir/.venv" ]; then
+        return 0
+    fi
+    if [ -f "$dir/requirements.txt" ]; then
+        echo "[$(elapsed_s)s] 安装 Python 依赖: $dir ..."
+        cd "$dir"
+        python3 -m venv .venv 2>/dev/null || true
+        .venv/bin/pip install -r requirements.txt -q 2>&1 | tail -3
+        cd "$SCRIPT_DIR"
+    fi
+}
+
 # 收集服务状态信息
 service_status() {
     local name=$1
@@ -255,7 +270,7 @@ FAILED_SERVICE=""
 FAILED_REASON=""
 OVERALL_STATUS="success"
 
-# --- 2a. Backend :8080 ---
+# --- 2a. Backend :8080 ---（共享数据层，最先启动）
 echo ""
 echo ">> 启动 Backend (:8080)..."
 BACKEND_START=$(date +%s)
@@ -274,7 +289,7 @@ else
     OVERALL_STATUS="failure"
 fi
 
-# --- 2b. MCP Server :8082 ---
+# --- 2b. MCP Server Java :8082 ---
 if [ "$OVERALL_STATUS" = "success" ] || [ "$FAILED_SERVICE" = "backend" ]; then
     echo ""
     echo ">> 启动 MCP Server (:8082)..."
@@ -294,10 +309,33 @@ if [ "$OVERALL_STATUS" = "success" ] || [ "$FAILED_SERVICE" = "backend" ]; then
     fi
 fi
 
-# --- 2c. Agent :8081 ---
+# --- 2c. MCP Server Python :8083 ---
+if [ -n "$PYTHON_BIN" ]; then
+    echo ""
+    echo ">> 启动 MCP Server Python (:8083)..."
+    MCP_PY_START=$(date +%s)
+    cd "$SCRIPT_DIR/finance-mcp-server-py"
+    nohup "$PYTHON_BIN" server.py > "$LOG_DIR/mcp-server-py.log" 2>&1 &
+    MCP_PY_PID=$!
+    cd "$SCRIPT_DIR"
+    if wait_for_port "MCP Server Python" 8083 60; then
+        MCP_PY_STARTUP=$(($(date +%s) - MCP_PY_START))
+        SERVICES_JSON+="$(service_status "mcp-server-py" 8083 "$MCP_PY_PID" "running" "$MCP_PY_STARTUP" "http://localhost:8083/sse"),"
+    else
+        MCP_PY_STARTUP=$(($(date +%s) - MCP_PY_START))
+        SERVICES_JSON+="$(service_status "mcp-server-py" 8083 "$MCP_PY_PID" "failed" "$MCP_PY_STARTUP" "http://localhost:8083/sse"),"
+        echo "⚠ MCP Server Python 启动失败（不阻塞 Java 栈）"
+    fi
+else
+    echo ""
+    echo "⚠ 未找到 python3，跳过 MCP Server Python (:8083)"
+    SERVICES_JSON+="$(service_status "mcp-server-py" 8083 "null" "skipped" 0 "http://localhost:8083/sse"),"
+fi
+
+# --- 2d. Agent Java :8081 ---
 if [ "$OVERALL_STATUS" = "success" ]; then
     echo ""
-    echo ">> 启动 Agent (:8081)..."
+    echo ">> 启动 Agent Java (:8081)..."
     AGENT_START=$(date +%s)
     cd "$SCRIPT_DIR/finance-agent"
     export MCP_SSE_URL="${MCP_SSE_URL:-http://localhost:8082}"
@@ -315,9 +353,38 @@ if [ "$OVERALL_STATUS" = "success" ]; then
     fi
 fi
 
-# --- 2d. Frontend :5173 ---
+# --- 2e. Agent Python :8084 ---
+if [ -n "$PYTHON_BIN" ]; then
+    echo ""
+    echo ">> 启动 Agent Python (:8084)..."
+    AGENT_PY_START=$(date +%s)
+    cd "$SCRIPT_DIR/finance-agent-py"
+    ensure_python_deps "$SCRIPT_DIR/finance-agent-py"
+    if [ -d ".venv" ]; then
+        nohup .venv/bin/python main.py > "$LOG_DIR/agent-py.log" 2>&1 &
+    else
+        nohup "$PYTHON_BIN" main.py > "$LOG_DIR/agent-py.log" 2>&1 &
+    fi
+    AGENT_PY_PID=$!
+    cd "$SCRIPT_DIR"
+    if wait_for_http "Agent Python" "http://localhost:8084/actuator/health" 60; then
+        AGENT_PY_STARTUP=$(($(date +%s) - AGENT_PY_START))
+        SERVICES_JSON+="$(service_status "agent-py" 8084 "$AGENT_PY_PID" "running" "$AGENT_PY_STARTUP" "http://localhost:8084/actuator/health"),"
+    else
+        AGENT_PY_STARTUP=$(($(date +%s) - AGENT_PY_START))
+        SERVICES_JSON+="$(service_status "agent-py" 8084 "$AGENT_PY_PID" "failed" "$AGENT_PY_STARTUP" "http://localhost:8084/actuator/health"),"
+        echo "⚠ Agent Python 启动失败（不阻塞 Java 栈）"
+    fi
+else
+    echo ""
+    echo "⚠ 未找到 python3，跳过 Agent Python (:8084)"
+    SERVICES_JSON+="$(service_status "agent-py" 8084 "null" "skipped" 0 "http://localhost:8084/actuator/health"),"
+fi
+
+# --- 2f. Frontend :5173 ---
 echo ""
 echo ">> 启动 Frontend (:5173)..."
+
 ensure_npm_deps
 FRONTEND_START=$(date +%s)
 cd "$SCRIPT_DIR/finance-frontend"
@@ -369,10 +436,12 @@ else
     fi
     echo ""
     echo "端口状态:"
-    lsof -ti:8080 >/dev/null 2>&1 && echo "  Backend  :8080 ✅" || echo "  Backend  :8080 ❌"
-    lsof -ti:8082 >/dev/null 2>&1 && echo "  MCP      :8082 ✅" || echo "  MCP      :8082 ❌"
-    lsof -ti:8081 >/dev/null 2>&1 && echo "  Agent    :8081 ✅" || echo "  Agent    :8081 ❌"
-    lsof -ti:5173 >/dev/null 2>&1 && echo "  Frontend :5173 ✅" || echo "  Frontend :5173 ❌"
+    lsof -ti:8080 >/dev/null 2>&1 && echo "  Backend      :8080 ✅" || echo "  Backend      :8080 ❌"
+    lsof -ti:8082 >/dev/null 2>&1 && echo "  MCP Java     :8082 ✅" || echo "  MCP Java     :8082 ❌"
+    lsof -ti:8083 >/dev/null 2>&1 && echo "  MCP Python   :8083 ✅" || echo "  MCP Python   :8083 ❌"
+    lsof -ti:8081 >/dev/null 2>&1 && echo "  Agent Java   :8081 ✅" || echo "  Agent Java   :8081 ❌"
+    lsof -ti:8084 >/dev/null 2>&1 && echo "  Agent Python :8084 ✅" || echo "  Agent Python :8084 ❌"
+    lsof -ti:5173 >/dev/null 2>&1 && echo "  Frontend     :5173 ✅" || echo "  Frontend     :5173 ❌"
 fi
 
 exit 0

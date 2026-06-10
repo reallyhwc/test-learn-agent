@@ -23,9 +23,10 @@ bash scripts/restart-all.sh --json 2>&1
 脚本会自动完成：
 1. 探测 JAVA_HOME（Homebrew / sdkman / java_home）
 2. 杀掉全部旧进程（:5173, :8081, :8084, :8082, :8083, :8080），先 SIGTERM 再 SIGKILL
-3. 按依赖顺序启动：Backend → MCP Server → Agent → Frontend
+3. 按依赖顺序启动 6 个服务：Backend → MCP Java → MCP Python → Agent Java → Agent Python → Frontend
 4. 每步健康检查（HTTP 200/401/404/302 视为就绪）
-5. 输出结构化 JSON 结果
+5. Python3 不可用时自动跳过 Python 栈服务（标记为 skipped）
+6. 输出结构化 JSON 结果
 
 **耐心等待**（最长 5 分钟），不要中断。
 
@@ -54,16 +55,22 @@ bash scripts/restart-all.sh --json 2>&1
 | 服务 | 端口 | 状态 | 启动耗时 | PID |
 |------|------|------|----------|-----|
 | Backend | 8080 | ✅/❌ | 8.2s | 12345 |
-| MCP Server | 8082 | ✅/❌ | 6.1s | 12346 |
-| Agent | 8081 | ✅/❌ | 25.3s | 12347 |
-| Frontend | 5173 | ✅/❌ | 3.5s | 12348 |
+| MCP Java | 8082 | ✅/❌ | 6.1s | 12346 |
+| MCP Python | 8083 | ✅/❌/⏭ | 4.0s | 12347 |
+| Agent Java | 8081 | ✅/❌ | 25.3s | 12348 |
+| Agent Python | 8084 | ✅/❌/⏭ | 8.0s | 12349 |
+| Frontend | 5173 | ✅/❌ | 3.5s | 12350 |
+
+> ⏭ = skipped（Python3 不可用时跳过）
 
 ### 访问地址
 
-- Frontend: http://localhost:5173
-- Backend:  http://localhost:8080
-- Agent:   http://localhost:8081
-- MCP:     http://localhost:8082
+- Frontend:       http://localhost:5173
+- Backend:        http://localhost:8080
+- Agent Java:     http://localhost:8081
+- Agent Python:   http://localhost:8084
+- MCP Java:       http://localhost:8082
+- MCP Python:     http://localhost:8083
 ```
 
 ### Step 4: 失败时排查
@@ -97,7 +104,7 @@ bash scripts/restart-all.sh --json 2>&1
   "status": "{pass 或 fail}",
   "metrics": {
     "servicesUp": {成功启动的服务数},
-    "servicesTotal": {总服务数}
+    "servicesTotal": {总服务数，含 Python 栈为 6，无 Python 为 4}
   },
   "blockers": [{失败时列出具体服务名和原因，如 "Agent :8081 启动失败: JAVA_HOME 未设置"}],
   "timestamp": "{ISO 8601 格式当前时间}"
@@ -110,7 +117,9 @@ bash scripts/restart-all.sh --json 2>&1
 
 ## 注意事项
 
-- 脚本会杀掉全部旧进程，确保干净启动
+- 脚本会杀掉全部 6 个端口的旧进程，确保干净启动
 - Frontend 失败不影响整体状态（后端服务才是核心）
+- Python 服务失败不阻塞 Java 栈（Python 是副栈），但需在报告中标注
+- Python3 不可用时自动跳过 Python 服务，servicesTotal 按实际数量统计
 - 如果 JAVA_HOME 探测失败，脚本会自动退出并报告
 - JSON 结果嵌入在日志输出中，需要提取最后的 `{...}` 块
