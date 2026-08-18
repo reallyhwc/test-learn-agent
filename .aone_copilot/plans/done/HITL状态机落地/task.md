@@ -77,22 +77,21 @@ IDLE ──(save)──► PENDING ──(confirm CAS)──► EXECUTING ──
 
 ## 五、测试结果（可验证证据）
 
-- **Java**：`./mvnw test` → **150 个测试，0 失败 0 错误，14 个因无 LLM 环境跳过**（BUILD SUCCESS）。
-- **Python**：`python3 -m pytest test_hitl.py` → **15 passed in 0.03s**。
+- **Java**：`./mvnw test` → **155 个测试，0 失败 0 错误，14 个因无 LLM 环境跳过**（BUILD SUCCESS，含 9 状态机 + 7 编排 + 3 B 层落库冒烟 + 2 写操作 pause/不 pause）。
+- **Python**：`python3 -m pytest test_hitl.py test_hitl_gate.py` → **22 passed**（15 状态机/编排器 + 7 写操作闸门）。
 - **TDD 关键捕获**：RED 阶段发现并修复一个真实原子性 bug——`transition` 原判据 `result.status() == target` 在「状态已非 expected 但恰等于 target」时误判抢占成功，导致并发 confirm 8 线程全部「成功」（`shouldAllowOnlyOneConcurrentConfirmToWin` 期望 1 实得 8）。改用 `changed[]` 标志记录是否真正发生 expected→target 变更后修复。**这正是「并发幂等」测试不可省的价值。**
 
-## 六、已知遗留（如实记录）
+## 六、最终状态（三项目遗留已全部解决）
 
-1. **`event:confirmation` 的流式发射未实现（有源码级依据的遗留，非遗漏）**：反编译 `BaseAdvisor.adviseStream` 证实，流式下 `after()` 通过 `Flux.map` 对**每个 chunk** 独立应用，其写回的 `ChatClientResponse.context()` 是**瞬时的、不跨 LLM step 传递**。因此「advisor 写 confirmationId 进 context → controller subscribe 读 context 发射事件」这条路径在流式下**读不到**（tool-call chunk 的 context 不会出现在后续文本 chunk）。要做到发射，需一个跨 step 的载体（如 controller 侧直接从 `HitlOrchestrator` 单例查询 pending 项，或改用非流式 `call()` 路径的 advisor context）。此判断基于源码，故未贸然实现会产出死代码的方案。
-2. **Python LangGraph 工具执行层「写操作暂停」未接线**：`hitl.py` 状态机/编排器 + 端点已完成并通过测试，但 `agent.py` 的 `create_react_agent` 自动执行工具，真正「暂停写操作不执行」需 LangGraph `interrupt()` 专集（需改造 graph 结构）。当前 Python 系统为 3.9（项目要求 3.10+），无 venv，无法完整验证 chat_server 运行。已记录于 CLAUDE.md。
-3. **B 层跨进程落库冒烟**：未新增重型跨进程测试。「未确认不落库、确认才落库」副作用已在 `HitlOrchestratorTest` + `RecordingBackendClient` 精确断言（pause 时 postCount=0，confirm 后=1，body 参数核验）。
+1. ✅ **`event:confirmation` 流式发射已实现**：在 `ChatController` 单/多 agent 流式 `subscribe` 回调中检测 `msg.hasToolCalls()`，命中写工具时从 `HitlOrchestrator.listPending(userId)` 查询 PENDING 项并发射 `event:confirmation`。规避了「流式 advisor context 不跨 step 传递」的源码级限制（反编译 `BaseAdvisor.adviseStream` 证实 `after()` 经 `Flux.map` 对每 chunk 独立应用、context 瞬时）。store 新增 `listPendingByUserId`。
+2. ✅ **Python LangGraph 写操作暂停已实现（闸门层）**：新增 `hitl_gate.py`，`wrap_write_tools` 对 `add_transaction` 包装一层「执行前 `interrupt()` 暂停」，confirm 后 resume 执行、cancel 抛 `CancelledToolCall`；已接线到 `agent.py` 单栈 + Multi-Agent bookkeeper 工具列表。纯逻辑层 7 用例单测通过。
+3. ✅ **B 层跨进程落库冒烟已实现**：`HitlOrchestratorPersistenceSmokeTest` 用 JDK 内置 `HttpServer` 起真实 HTTP 端口，验证「未确认不落 CSV、确认后落库、取消不落库」三条链路（3 用例）。
 
-## 七、后续建议（按优先级）
+## 七、遗留（环境限制，如实记录）
 
-1. **补 `event:confirmation` 发射（需先定载体）**：在 controller 流式回调中，从 `HitlOrchestrator` 单例查询「当前会话有无 pending 的写操作」来发射确认事件（而非依赖 advisor context 传递）。这是打通「advisor→前端卡片」的最后一环，需先决定载体方案。
-2. **Python LangGraph interrupt 集成**：在 3.10+ venv 环境补 `interrupt()` 实现写操作暂停。
-3. **挂入 pre-merge pipeline gate**：把 HITL 状态机测试纳入流水线（当前 pipeline 只跑 restart→eval∥regression→review，缺 guardrail 验证 gate）。
-4. **金额阈值联动**：与 roadmap 01「大额才确认」协同，`MAX_AMOUNT` 复用 HITL 触发条件。
+1. **Python 完整 interrupt/resume 运行时闭环未端到端验证**：`hitl_gate.py` 的闸门 + `agent.py` 接线已完成单测通过，但「interrupt 挂起 → 前端 confirm → `Command(resume=...)` 恢复执行」的运行时闭环需 Python 3.10+ venv（当前系统 3.9，无法 import langgraph 运行时）。
+2. **挂入 pre-merge pipeline gate**：HITL 状态机/冒烟测试尚未纳入 pre-merge 流水线 gate（当前 pipeline 只跑 restart→eval∥regression→review）。
+3. **金额阈值联动**：与 roadmap 01「大额才确认」协同，`MAX_AMOUNT` 复用 HITL 触发条件。
 
 ## 八、harness 体系沉淀
 
