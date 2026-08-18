@@ -43,6 +43,14 @@ class FinanceAgent:
             temperature=0.1,
         )
         await self._connect_mcp()
+        # HITL：写操作工具加确认闸门，执行前通过 langgraph interrupt 暂停
+        try:
+            from langgraph.types import interrupt as langgraph_interrupt
+            from hitl_gate import wrap_write_tools
+            self._tools = wrap_write_tools(self._tools, langgraph_interrupt)
+        except ImportError:
+            # 环境缺 langgraph.types（如 3.9 无 langgraph），跳过闸门，写操作直连
+            logger.warning("无法导入 langgraph.types，HITL 写操作闸门未启用")
         self._agent = create_react_agent(self._model, self._tools)
         logger.info("LangChain Agent 初始化完成")
 
@@ -221,6 +229,13 @@ class MultiAgentFinanceAgent:
         # --- Bookkeeper Agent（记账工具子集）---
         bookkeeper_tools = [t for t in all_tools
                             if t.name in ("add_transaction", "list_accounts", "query_balance")]
+        # HITL：写操作工具加确认闸门
+        try:
+            from langgraph.types import interrupt as langgraph_interrupt
+            from hitl_gate import wrap_write_tools
+            bookkeeper_tools = wrap_write_tools(bookkeeper_tools, langgraph_interrupt)
+        except ImportError:
+            logger.warning("无法导入 langgraph.types，Multi-Agent HITL 写操作闸门未启用")
         bookkeeper_llm = ChatOpenAI(
             model=llm_config["model"],
             api_key=llm_config["api_key"],
