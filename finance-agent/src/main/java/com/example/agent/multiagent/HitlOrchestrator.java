@@ -143,6 +143,13 @@ public class HitlOrchestrator {
     }
 
     /**
+     * 列出指定用户所有待确认（PENDING）项，供流式回调发射 event:confirmation。
+     */
+    public java.util.List<PendingConfirmationStore.PendingCall> listPending(String userId) {
+        return store.listPendingByUserId(userId);
+    }
+
+    /**
      * 真正执行写操作：调用 backend `POST /api/transactions` 落地。
      */
     private Object executeTool(PendingConfirmationStore.PendingCall call,

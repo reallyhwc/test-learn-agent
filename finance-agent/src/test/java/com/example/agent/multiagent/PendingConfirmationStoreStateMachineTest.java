@@ -152,4 +152,30 @@ class PendingConfirmationStoreStateMachineTest {
         // CAS 幂等：有且仅有一个线程抢占成功
         assertThat(wins.get()).isEqualTo(1);
     }
+
+    @Test
+    void shouldListPendingByUserId() {
+        var store = new PendingConfirmationStore();
+        store.save("add_transaction", Map.of("amount", 30), "user-a");
+        store.save("add_transaction", Map.of("amount", 50), "user-a");
+        store.save("add_transaction", Map.of("amount", 70), "user-b");
+
+        var pendingA = store.listPendingByUserId("user-a");
+        assertThat(pendingA).hasSize(2);
+
+        var pendingB = store.listPendingByUserId("user-b");
+        assertThat(pendingB).hasSize(1);
+
+        assertThat(store.listPendingByUserId("user-c")).isEmpty();
+    }
+
+    @Test
+    void shouldNotListTerminalStatesByUserId() {
+        var store = new PendingConfirmationStore();
+        String id = store.save("add_transaction", Map.of("amount", 30), "user-a");
+        store.transition(id, PendingConfirmationStore.Status.PENDING, PendingConfirmationStore.Status.CANCELLED);
+
+        // 已终止（CANCELLED）不计入 pending 列表
+        assertThat(store.listPendingByUserId("user-a")).isEmpty();
+    }
 }

@@ -163,6 +163,28 @@ public class PendingConfirmationStore {
     }
 
     /**
+     * 列出指定用户所有待确认（PENDING）项，用于流式回调发射 event:confirmation。
+     * 过期项不计入并就地标记 EXPIRED。
+     */
+    public java.util.List<PendingCall> listPendingByUserId(String userId) {
+        Instant now = Instant.now();
+        var result = new java.util.ArrayList<PendingCall>();
+        for (var call : store.values()) {
+            if (!userId.equals(call.userId())) {
+                continue;
+            }
+            if (now.isAfter(call.expiresAt())) {
+                store.computeIfPresent(call.confirmationId(), (k, v) -> v.withStatus(Status.EXPIRED));
+                continue;
+            }
+            if (call.status() == Status.PENDING) {
+                result.add(call);
+            }
+        }
+        return result;
+    }
+
+    /**
      * 将指定条目强制置过期（仅测试用，模拟 TTL 超时）。
      */
     public void forceExpire(String confirmationId) {

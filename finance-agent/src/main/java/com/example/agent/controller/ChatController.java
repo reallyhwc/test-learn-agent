@@ -269,6 +269,21 @@ public class ChatController {
                                 var msg = gen.getOutput();
                                 if (msg == null) return;
 
+                                // HITL：LLM 决定调用写工具时，发射 event:confirmation 给前端。
+                                // 工具调用 chunk 会先于最终文本 chunk 到达，此时 advisor 已完成 pause（写进 store），
+                                // 故从 store 查询该用户 PENDING 项并发射，而非依赖 advisor context 传递。
+                                if (msg.hasToolCalls()) {
+                                    for (var toolCall : msg.getToolCalls()) {
+                                        if (hitlOrchestrator.isWriteTool(toolCall.name())) {
+                                            var pending = hitlOrchestrator.listPending(userId);
+                                            if (!pending.isEmpty()) {
+                                                writeSseConfirmation(outputStream, pending.get(pending.size() - 1), clientGone);
+                                                log.info("HITL emit confirmation: userId={}, tool={}", userId, toolCall.name());
+                                            }
+                                        }
+                                    }
+                                }
+
                                 // Spring AI 把 reasoning_content 放在 AssistantMessage.metadata 里
                                 Object reasoningObj = msg.getMetadata() != null
                                         ? msg.getMetadata().get("reasoningContent")
@@ -449,6 +464,19 @@ public class ChatController {
                                 var msg = gen.getOutput();
                                 if (msg == null) return;
 
+                                // HITL：写工具调用时发射 event:confirmation（同单 agent 路径）
+                                if (msg.hasToolCalls()) {
+                                    for (var toolCall : msg.getToolCalls()) {
+                                        if (hitlOrchestrator.isWriteTool(toolCall.name())) {
+                                            var pending = hitlOrchestrator.listPending(userId);
+                                            if (!pending.isEmpty()) {
+                                                writeSseConfirmation(outputStream, pending.get(pending.size() - 1), clientGone);
+                                                log.info("HITL emit confirmation (multi): userId={}, tool={}", userId, toolCall.name());
+                                            }
+                                        }
+                                    }
+                                }
+
                                 Object reasoningObj = msg.getMetadata() != null
                                         ? msg.getMetadata().get("reasoningContent")
                                         : null;
@@ -612,6 +640,30 @@ public class ChatController {
         } catch (IOException e) {
             if (clientGone.compareAndSet(false, true)) {
                 log.warn("SSE client disconnected during error write: {}", e.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 发射 HITL 确认请求事件（event:confirmation）。
+     * payload 含 confirmationId / toolName / parameters / expiresAt，供前端 ConfirmationCard 消费。
+     */
+    private void writeSseConfirmation(OutputStream out,
+                                      com.example.agent.multiagent.PendingConfirmationStore.PendingCall call,
+                                      AtomicBoolean clientGone) {
+        if (clientGone.get()) return;
+        try {
+            java.util.LinkedHashMap<String, Object> payload = new java.util.LinkedHashMap<>();
+            payload.put("confirmationId", call.confirmationId());
+            payload.put("toolName", call.toolName());
+            payload.put("parameters", call.parameters());
+            payload.put("expiresAt", call.expiresAt().toString());
+            String json = TOKEN_USAGE_MAPPER.writeValueAsString(payload);
+            out.write(("event:confirmation\ndata:" + json + "\n\n").getBytes(StandardCharsets.UTF_8));
+            out.flush();
+        } catch (IOException e) {
+            if (clientGone.compareAndSet(false, true)) {
+                log.warn("SSE client disconnected during confirmation write: {}", e.getMessage());
             }
         }
     }
