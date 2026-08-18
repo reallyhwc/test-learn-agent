@@ -272,7 +272,8 @@ Model → Repository → Service → Controller → MCP Server → Agent → Fro
 - ~~`GlobalExceptionHandlerTest`~~ ✅ 已修复：新增 `HttpMessageNotReadableException` 和 `TypeMismatchException` 专用 handler，5 个用例全部通过
 - 系统默认 Java 是 1.8，编译需要：`export JAVA_HOME=/opt/homebrew/Cellar/openjdk@17/17.0.19/libexec/openjdk.jdk/Contents/Home`（或 start-all.sh 会自动探测 Homebrew 路径）
 - `Transaction` 使用 `@AllArgsConstructor`，新增字段会破坏所有现有构造调用 → 推荐用 setter 或 Builder
-- **HITL 确认流程未完成**：`PendingConfirmationStore.save()` 从未在生产代码中被调用，Multi-Agent 模式下 `add_transaction` 写操作直接执行无人工确认。前端 `ConfirmationCard` + confirm/cancel 端点已就绪，但后端拦截链路（tool call 检测 → save → event:confirmation 发射）尚未实现。Multi-Agent 模式标记为 beta。
+- **HITL 已闭环（2026-08-18）**：`PendingConfirmationStore` 重构为 6 态状态机（IDLE/PENDING/EXECUTING/DONE/CANCELLED/EXPIRED）+ CAS 原子抢占；新增 `HitlOrchestrator` 编排「写操作→暂停→确认执行→落库」；`ToolCallGuardrailAdvisor` 对写操作触发 pause 并写入 confirmationId；`/chat/confirm` `/chat/cancel` 端点真正推进状态机并落库。Python 副栈 `hitl.py` 对等实现。详见 [docs/superpowers/specs/2026-08-18-hitl-state-machine-design.md](docs/superpowers/specs/2026-08-18-hitl-state-machine-design.md)
+- **Python 副栈 HITL 遗留**：`hitl.py` 状态机/编排器 + 端点已对齐并通过测试，但 LangGraph 工具执行层的「写操作暂停」需 `interrupt()` 专门集成（需 Python 3.10+ venv 环境），见 spec。
 
 ## Anti-Patterns（禁止事项）
 

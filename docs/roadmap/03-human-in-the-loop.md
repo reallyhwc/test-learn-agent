@@ -1,7 +1,9 @@
 # 03 Human-in-the-Loop — 大额操作先确认再执行
 
-> **优先级：★★★★☆ · 状态：✅ 已实施（2026-06-07）**
+> **优先级：★★★★☆ · 状态：✅ 状态机闭环已实施（2026-08-18 重做，原 2026-06-07 标记为文档乐观、实际链路未接通）**
 > **一句话理解：Human-in-the-Loop 就是 AI 版的"二次确认弹窗"——写操作先确认再执行。**
+
+> ⚠️ 本文档的「具体实现方案」章节（`HumanConfirmationAdvisor` / `interrupt()` / `ConfirmationCard.vue`）是**早期设计稿**，与 2026-08-18 实际落地架构有出入。实际实现为 **6 态状态机 + `HitlOrchestrator`**，见 [spec](../../superpowers/specs/2026-08-18-hitl-state-machine-design.md)。
 
 ---
 
