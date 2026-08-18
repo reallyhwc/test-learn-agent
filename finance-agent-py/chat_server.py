@@ -6,6 +6,7 @@ import re
 import subprocess
 import threading
 import time
+from typing import Optional
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
@@ -186,6 +187,7 @@ async def chat_stream(request: ChatRequest):
 
 class ConfirmRequest(BaseModel):
     confirmation_id: str = Field(alias="confirmationId")
+    modified_params: Optional[dict] = Field(default=None, alias="modifiedParams")
 
 
 @app.post("/api/chat/multi-agent/stream")
@@ -214,18 +216,66 @@ async def chat_multi_agent_stream(request: ChatRequest):
 
 # ──────────── /api/chat/confirm ────────────
 
+# 模块级共享 HITL 编排器（与 Java 栈 HitlOrchestrator 语义对齐）
+from hitl import PendingConfirmationStore, HitlOrchestrator  # noqa: E402
+
+_hitl_store = PendingConfirmationStore()
+
+
+async def _execute_transaction(call, modified_params=None):
+    """真正执行写操作：调用 backend POST /api/transactions 落地。"""
+    import httpx
+
+    params = modified_params if modified_params else call.parameters
+    body = {
+        "userId": call.user_id,
+        "type": params.get("type"),
+        "amount": params.get("amount"),
+        "category": params.get("category"),
+        "subCategory": params.get("subCategory"),
+        "note": params.get("note"),
+        "date": params.get("date"),
+    }
+    # 移除 None 值，避免 backend 校验异常
+    body = {k: v for k, v in body.items() if v is not None}
+    backend_url = os.environ.get("FINANCE_BACKEND_URL", "http://localhost:8080")
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        resp = await client.post(f"{backend_url}/api/transactions", json=body)
+        resp.raise_for_status()
+        return resp.json()
+
+
+_hitl_orchestrator = HitlOrchestrator(_hitl_store, _execute_transaction)
+
+
 @app.post("/api/chat/confirm")
 async def confirm(request: ConfirmRequest):
-    """确认执行待定操作。"""
-    return JSONResponse({"status": "ok", "message": "确认已处理"})
+    """确认执行待定操作，推进 6 态状态机并真正落库。"""
+    body = await _hitl_orchestrator.confirm(request.confirmation_id, request.modified_params)
+    status_map = {
+        "EXECUTED": 200,
+        "NOT_PENDING": 409,
+        "NOT_FOUND": 404,
+        "EXPIRED": 404,
+    }
+    code = status_map.get(body["status"], 400)
+    return JSONResponse(body, status_code=code)
 
 
 # ──────────── /api/chat/cancel ────────────
 
 @app.post("/api/chat/cancel")
 async def cancel(request: ConfirmRequest):
-    """取消待定操作。"""
-    return JSONResponse({"status": "cancelled", "message": "操作已取消"})
+    """取消待定操作，推进 6 态状态机。"""
+    body = await _hitl_orchestrator.cancel(request.confirmation_id)
+    status_map = {
+        "CANCELLED": 200,
+        "NOT_PENDING": 409,
+        "NOT_FOUND": 404,
+        "EXPIRED": 404,
+    }
+    code = status_map.get(body["status"], 400)
+    return JSONResponse(body, status_code=code)
 
 
 # ──────────── /api/memory (记忆管理) ────────────
