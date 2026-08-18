@@ -76,6 +76,16 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
     /** 存储在 context 中的 userId key */
     public static final String CONTEXT_USER_ID = "guardrail.userId";
 
+    /** 存储在 context 中的 HITL confirmationId key（advisor 触发暂停后写入，供 controller 发射 event:confirmation） */
+    public static final String CONTEXT_HITL_CONFIRMATION_ID = "hitl.confirmationId";
+
+    /** 需要 HITL 确认的编排器（识别写操作 → 暂停 → 生成待确认项） */
+    private final com.example.agent.multiagent.HitlOrchestrator hitlOrchestrator;
+
+    public ToolCallGuardrailAdvisor(com.example.agent.multiagent.HitlOrchestrator hitlOrchestrator) {
+        this.hitlOrchestrator = hitlOrchestrator;
+    }
+
     /**
      * 返回 HIGHEST_PRECEDENCE + 300，在 InputGuardrail 之后、ChatMemory 之前执行。
      */
@@ -136,6 +146,8 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
 
     /**
      * 遍历 LLM 返回的 tool_call 列表，执行 userId 篡改检测、金额范围校验和写操作频率监控。
+     * 对写操作调用 {@link HitlOrchestrator#pauseForConfirmation} 生成待确认项，
+     * 并将 confirmationId 写回 response context 供 controller 发射 event:confirmation。
      */
     @Override
     public ChatClientResponse after(ChatClientResponse response, AdvisorChain chain) {
@@ -152,11 +164,40 @@ public class ToolCallGuardrailAdvisor implements BaseAdvisor {
         // 从 context 中获取会话 userId
         String sessionUserId = getSessionUserId(response);
 
+        String confirmationId = null;
         for (AssistantMessage.ToolCall toolCall : output.getToolCalls()) {
             auditToolCall(toolCall, sessionUserId);
+            if (hitlOrchestrator.isWriteTool(toolCall.name())) {
+                confirmationId = hitlOrchestrator.pauseForConfirmation(
+                        toolCall.name(),
+                        parseArguments(toolCall.arguments()),
+                        sessionUserId,
+                        null);
+            }
         }
 
+        if (confirmationId != null) {
+            return response.mutate()
+                    .context(CONTEXT_HITL_CONFIRMATION_ID, confirmationId)
+                    .build();
+        }
         return response;
+    }
+
+    /**
+     * 解析工具参数 JSON 为 Map，解析失败时返回空 Map。
+     */
+    private Map<String, Object> parseArguments(String arguments) {
+        if (arguments == null || arguments.isBlank()) {
+            return Map.of();
+        }
+        try {
+            JsonNode node = MAPPER.readTree(arguments);
+            return MAPPER.convertValue(node, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {});
+        } catch (JsonProcessingException e) {
+            log.debug("ToolCallGuardrail: 无法解析工具参数 JSON: {}", e.getMessage());
+            return Map.of();
+        }
     }
 
     /**

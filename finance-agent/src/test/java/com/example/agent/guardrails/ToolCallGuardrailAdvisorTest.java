@@ -25,10 +25,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ToolCallGuardrailAdvisorTest {
 
     private ToolCallGuardrailAdvisor advisor;
+    private com.example.agent.multiagent.HitlOrchestrator hitlOrchestrator;
 
     @BeforeEach
     void setUp() {
-        advisor = new ToolCallGuardrailAdvisor();
+        var store = new com.example.agent.multiagent.PendingConfirmationStore();
+        var restClient = org.springframework.web.client.RestClient.builder()
+                .baseUrl("http://localhost:1") // 测试中不真正触发 confirm，仅需构造
+                .build();
+        hitlOrchestrator = new com.example.agent.multiagent.HitlOrchestrator(store, restClient);
+        advisor = new ToolCallGuardrailAdvisor(hitlOrchestrator);
     }
 
     @Test
@@ -135,6 +141,42 @@ class ToolCallGuardrailAdvisorTest {
             advisor.after(response, null);
         }
         // 读操作不应触发频率限制
+    }
+
+    @Test
+    void shouldPauseWriteToolAndPublishConfirmationId() {
+        var toolCall = new AssistantMessage.ToolCall(
+                "call-1", "function", "add_transaction",
+                "{\"userId\":\"test-user\",\"amount\":\"30\",\"type\":\"EXPENSE\"}");
+        ChatClientResponse response = buildResponseWithContext(
+                "", List.of(toolCall), "test-user");
+
+        ChatClientResponse result = advisor.after(response, null);
+
+        // 写操作应触发 HITL 暂停，并把 confirmationId 写回 context
+        Object confirmationId = result.context().get(ToolCallGuardrailAdvisor.CONTEXT_HITL_CONFIRMATION_ID);
+        assertThat(confirmationId).isNotNull();
+        assertThat(confirmationId.toString()).isNotBlank();
+
+        // store 中应存在 PENDING 状态的待确认项
+        var lookup = hitlOrchestrator.lookup(confirmationId.toString());
+        assertThat(lookup.lookup()).isEqualTo(com.example.agent.multiagent.PendingConfirmationStore.Lookup.FOUND);
+        assertThat(lookup.call().status()).isEqualTo(com.example.agent.multiagent.PendingConfirmationStore.Status.PENDING);
+    }
+
+    @Test
+    void shouldNotPauseReadTool() {
+        var toolCall = new AssistantMessage.ToolCall(
+                "call-1", "function", "query_balance",
+                "{\"userId\":\"test-user\"}");
+        ChatClientResponse response = buildResponseWithContext(
+                "", List.of(toolCall), "test-user");
+
+        ChatClientResponse result = advisor.after(response, null);
+
+        // 读操作不应写入 confirmationId
+        assertThat(result.context().containsKey(ToolCallGuardrailAdvisor.CONTEXT_HITL_CONFIRMATION_ID))
+                .isFalse();
     }
 
     // ========== before() 测试：userId 解析与 context 透传 ==========

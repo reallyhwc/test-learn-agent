@@ -82,7 +82,7 @@ public class ChatController {
     private final com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor;
     private final SupervisorAgent supervisorAgent;
     private final PromptLoader promptLoader;
-    private final PendingConfirmationStore pendingConfirmationStore;
+    private final com.example.agent.multiagent.HitlOrchestrator hitlOrchestrator;
 
     public ChatController(ChatClient.Builder chatClientBuilder,
                           List<ToolCallbackProvider> toolProviders,
@@ -95,7 +95,7 @@ public class ChatController {
                           com.example.agent.debug.LlmAuditAdvisor llmAuditAdvisor,
                           SupervisorAgent supervisorAgent,
                           PromptLoader promptLoader,
-                          PendingConfirmationStore pendingConfirmationStore) {
+                          com.example.agent.multiagent.HitlOrchestrator hitlOrchestrator) {
         log.info("ChatController initialized with {} tool providers", toolProviders.size());
         for (var provider : toolProviders) {
             log.info("  Provider: {} -> {} tools", provider.getClass().getSimpleName(),
@@ -110,7 +110,7 @@ public class ChatController {
         this.llmAuditAdvisor = llmAuditAdvisor;
         this.supervisorAgent = supervisorAgent;
         this.promptLoader = promptLoader;
-        this.pendingConfirmationStore = pendingConfirmationStore;
+        this.hitlOrchestrator = hitlOrchestrator;
         this.chatClient = chatClientBuilder
                 .defaultToolCallbacks(toolProviders.toArray(new ToolCallbackProvider[0]))
                 .build();
@@ -363,7 +363,7 @@ public class ChatController {
      * <ul>
      *   <li>Supervisor 先做意图分类，选择 Specialist</li>
      *   <li>thinking 事件扩展 agent 字段，前端可据此显示 Agent 标识</li>
-     *   <li>[未完成] 未来迭代将实现 add_transaction 写操作拦截 + PendingConfirmationStore 确认流程</li>
+     *   <li>[已完成] add_transaction 写操作经 HitlOrchestrator 拦截，confirm/cancel 端点推进 6 态状态机</li>
      * </ul>
      */
     @PostMapping(value = "/chat/multi-agent/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -537,19 +537,22 @@ public class ChatController {
             return ResponseEntity.badRequest()
                     .body(Map.of("status", "error", "message", "confirmationId 不能为空"));
         }
-        var pending = pendingConfirmationStore.get(confirmationId);
-        if (pending.isEmpty()) {
-            return ResponseEntity.status(404)
-                    .body(Map.of("status", "error", "message", "确认请求已过期或不存在"));
-        }
-        // TODO: 在完整实现中这里会实际执行工具调用
-        // 目前返回成功状态，工具执行逻辑在后续迭代中完善
-        log.info("HITL confirm: confirmationId={}, toolName={}", confirmationId, pending.get().toolName());
-        return ResponseEntity.ok(Map.of(
-                "status", "ok",
-                "message", "操作已确认执行",
-                "toolName", pending.get().toolName()
-        ));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> modifiedParams = (Map<String, Object>) body.get("modifiedParams");
+        var outcome = hitlOrchestrator.confirm(confirmationId, modifiedParams);
+        return switch (outcome.status()) {
+            case EXECUTED -> {
+                log.info("HITL confirm 成功: confirmationId={}", confirmationId);
+                yield ResponseEntity.ok(Map.of(
+                        "status", "ok",
+                        "message", outcome.message(),
+                        "result", outcome.result() != null ? outcome.result() : Map.of()));
+            }
+            case NOT_FOUND, EXPIRED -> ResponseEntity.status(404)
+                    .body(Map.of("status", "error", "message", outcome.message()));
+            case NOT_PENDING -> ResponseEntity.status(409)
+                    .body(Map.of("status", "error", "message", outcome.message()));
+        };
     }
 
     /**
@@ -558,11 +561,18 @@ public class ChatController {
     @PostMapping("/chat/cancel")
     public ResponseEntity<Map<String, String>> cancel(@RequestBody Map<String, Object> body) {
         String confirmationId = (String) body.get("confirmationId");
-        if (confirmationId != null && !confirmationId.isBlank()) {
-            pendingConfirmationStore.remove(confirmationId);
-            log.info("HITL cancel: confirmationId={}", confirmationId);
+        if (confirmationId == null || confirmationId.isBlank()) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("status", "error", "message", "confirmationId 不能为空"));
         }
-        return ResponseEntity.ok(Map.of("status", "cancelled", "message", "操作已取消"));
+        var outcome = hitlOrchestrator.cancel(confirmationId);
+        return switch (outcome.status()) {
+            case CANCELLED -> ResponseEntity.ok(Map.of("status", "cancelled", "message", outcome.message()));
+            case NOT_FOUND, EXPIRED -> ResponseEntity.status(404)
+                    .body(Map.of("status", "error", "message", outcome.message()));
+            case NOT_PENDING -> ResponseEntity.status(409)
+                    .body(Map.of("status", "error", "message", outcome.message()));
+        };
     }
 
     private void writeSseData(OutputStream out, String token, AtomicBoolean clientGone) {
